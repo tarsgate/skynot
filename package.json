@@ -1,0 +1,22 @@
+{
+  "name": "skynot",
+  "version": "0.1.0",
+  "description": "Quick NPX tool to set up a pi user and install the pi-coding-agent",
+  "main": "dist/index.js",
+  "bin": {
+    "skynot": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^11.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.0",
+    "typescript": "^5.3.3"
+  }
+}
