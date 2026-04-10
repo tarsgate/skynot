@@ -235,8 +235,17 @@ exec sudo -u pi bash -c 'cd ${installDir} && npx pi-coding-agent "$@"' -- "$@"
 
 async function launchAgent(): Promise<void> {
   console.log('Launching pi-coding-agent...');
-  const installDir = getPiInstallDir();
-  await runAsPi(`cd ${installDir} && npx pi-coding-agent`);
+  const scriptPath = path.join(os.homedir(), 'bin', 'pi');
+  const child = spawn(scriptPath, [], { stdio: 'inherit' });
+  return new Promise<void>((resolve, reject) => {
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`pi-coding-agent exited with code ${code}`));
+      }
+    });
+  });
 }
 
 async function main() {
