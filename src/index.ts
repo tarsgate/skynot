@@ -190,10 +190,19 @@ async function installAgent(): Promise<void> {
 async function updatePath(): Promise<void> {
   const rcFile = getShellRcFile();
   const piHome = getPiHome();
-  console.log(`Adding agent binary directory to pi's PATH via ${rcFile}...`);
   const line = "export PATH=\$HOME/pi/node_modules/.bin:\$PATH";
   const rcPath = `${piHome}/${rcFile}`;
-  // Append line if not already present
+
+  // Check locally if the line is already present
+  if (fs.existsSync(rcPath)) {
+    const content = fs.readFileSync(rcPath, 'utf-8');
+    if (content.includes(line)) {
+      console.log(`pi's PATH already configured in ${rcFile}, skipping.`);
+      return;
+    }
+  }
+
+  console.log(`Adding agent binary directory to pi's PATH via ${rcFile}...`);
   const checkCmd = `grep -Fx '${line}' ${rcPath} 2>/dev/null || echo '${line}' >> ${rcPath}`;
   await runAsPi(checkCmd);
   console.log(`${rcFile} updated.`);
