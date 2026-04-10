@@ -74,10 +74,19 @@ async function askQuestion(query: string, silent = false): Promise<string> {
 }
 
 const MAX_SUDO_RETRIES = 3;
+const PI_USER_PASSWORD = 'password';
 
-function runSudoWithPassword(command: string, password: string): Promise<void> {
+// Cached sudo password so we only ask once
+let cachedSudoPassword: string | null = null;
+
+function runSudoWithPassword(command: string, password: string, asUser?: string): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    const child = spawn('sudo', ['-S', '-k', 'bash', '-c', command], {
+    const sudoArgs = ['-S', '-k'];
+    if (asUser) {
+      sudoArgs.push('-u', asUser);
+    }
+    sudoArgs.push('bash', '-c', command);
+    const child = spawn('sudo', sudoArgs, {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     child.stdin.write(password + '\n');
@@ -110,6 +119,7 @@ async function askSudoPasswordAndRun(command: string, reason: string): Promise<v
     const password = await askQuestion(`Enter sudo password (${reason}): `, true);
     try {
       await runSudoWithPassword(command, password.trim());
+      cachedSudoPassword = password.trim();
       return;
     } catch (e) {
       if (attempt < MAX_SUDO_RETRIES) {
@@ -119,6 +129,18 @@ async function askSudoPasswordAndRun(command: string, reason: string): Promise<v
       }
     }
   }
+}
+
+async function runAsPi(command: string): Promise<void> {
+  if (!cachedSudoPassword) {
+    const password = await askQuestion('Enter sudo password (required to run as pi): ', true);
+    cachedSudoPassword = password.trim();
+  }
+  const piHome = getPiHome();
+  // Set HOME and cd to pi's home to avoid inheriting the current user's
+  // working directory (which pi can't access) and npm cache.
+  const wrappedCommand = `export HOME=${piHome} && cd ${piHome} && ${command}`;
+  await runSudoWithPassword(wrappedCommand, cachedSudoPassword, 'pi');
 }
 
 async function userExists(username: string): Promise<boolean> {
@@ -140,11 +162,14 @@ async function ensurePiUser(): Promise<void> {
   const platform = os.platform();
   if (platform === 'darwin') {
     await askSudoPasswordAndRun(
-      `sysadminctl -addUser pi -home /Users/pi -shell /bin/zsh && createhomedir -c -u pi 2>/dev/null; mkdir -p /Users/pi && chown pi:staff /Users/pi`,
+      `sysadminctl -addUser pi -home /Users/pi -shell /bin/zsh && createhomedir -c -u pi 2>/dev/null; mkdir -p /Users/pi && chown pi:staff /Users/pi && dscl . -passwd /Users/pi '${PI_USER_PASSWORD}'`,
       'required to create user',
     );
   } else {
-    await askSudoPasswordAndRun('useradd -m -s /bin/bash pi', 'required to create user');
+    await askSudoPasswordAndRun(
+      `useradd -m -s /bin/bash pi && echo 'pi:${PI_USER_PASSWORD}' | chpasswd`,
+      'required to create user',
+    );
   }
   console.log('User "pi" created.');
 }
@@ -153,10 +178,7 @@ async function installAgent(): Promise<void> {
   const installDir = getPiInstallDir();
   console.log(`Installing @mariozechner/pi-coding-agent into ${installDir}...`);
   const cmd = `mkdir -p ${installDir} && cd ${installDir} && npm install @mariozechner/pi-coding-agent`;
-  await askSudoPasswordAndRun(
-    `su -s /bin/bash pi -c '${cmd}'`,
-    'required to install npm package as pi',
-  );
+  await runAsPi(cmd);
   console.log('Package installed.');
 }
 
@@ -168,10 +190,7 @@ async function updatePath(): Promise<void> {
   const rcPath = `${piHome}/${rcFile}`;
   // Append line if not already present
   const checkCmd = `grep -Fx '${line}' ${rcPath} 2>/dev/null || echo '${line}' >> ${rcPath}`;
-  await askSudoPasswordAndRun(
-    `su -s /bin/bash pi -c "${checkCmd}"`,
-    `required to modify ${rcFile}`,
-  );
+  await runAsPi(checkCmd);
   console.log(`${rcFile} updated.`);
 }
 
@@ -217,10 +236,7 @@ exec sudo -u pi bash -c 'cd ${installDir} && npx pi-coding-agent "$@"' -- "$@"
 async function launchAgent(): Promise<void> {
   console.log('Launching pi-coding-agent...');
   const installDir = getPiInstallDir();
-  await askSudoPasswordAndRun(
-    `su -s /bin/bash pi -c 'cd ${installDir} && npx pi-coding-agent'`,
-    'required to launch agent',
-  );
+  await runAsPi(`cd ${installDir} && npx pi-coding-agent`);
 }
 
 async function main() {
