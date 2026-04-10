@@ -221,8 +221,56 @@ async function createLauncherScript(): Promise<void> {
     fs.mkdirSync(binDir, { recursive: true });
   }
 
-  // Write the launcher shell script
+  const piHome = getPiHome();
+  const platform = os.platform();
+  const homeBase = platform === 'darwin' ? '/Users' : '/home';
+
+  // Write the launcher shell script with permission checks
   const scriptContent = `#!/bin/bash
+
+# Check permissions of other users' home directories
+EXPOSED_DIRS=()
+HOME_BASE="${homeBase}"
+PI_HOME="${piHome}"
+
+for user_home in "$HOME_BASE"/*/; do
+  # Skip pi's own home
+  if [ "$user_home" = "$PI_HOME/" ]; then
+    continue
+  fi
+
+  # Check if group or others have any permissions (r, w, or x)
+  perms=$(stat -f "%Sp" "$user_home" 2>/dev/null || stat -c "%A" "$user_home" 2>/dev/null)
+  if [ -z "$perms" ]; then
+    continue
+  fi
+
+  # Extract group and others permissions (characters 5-10 of e.g. drwxr-xr-x)
+  group_others="\${perms:4:6}"
+  # Check if any of group/others have r, w, or x
+  if echo "$group_others" | grep -q '[rwx]'; then
+    EXPOSED_DIRS+=("$user_home")
+  fi
+done
+
+if [ \${#EXPOSED_DIRS[@]} -gt 0 ]; then
+  echo "WARNING: The following user home directories are accessible by other users (including pi):"
+  for dir in "\${EXPOSED_DIRS[@]}"; do
+    echo "  $dir"
+  done
+  echo ""
+  read -p "Would you like to shield these directories? (recommended) [Y/n] " answer
+  answer=\${answer:-Y}
+  if [[ "$answer" =~ ^[Yy] ]]; then
+    for dir in "\${EXPOSED_DIRS[@]}"; do
+      sudo chmod go-rwx "$dir"
+      echo "Shielded: $dir"
+    done
+    echo "Done."
+  fi
+  echo ""
+fi
+
 echo "Launching pi-coding-agent with pi user (sudo is required to impersonate 'pi' user)..."
 exec sudo -i -u pi bash -c 'cd ${installDir} && npx --yes @mariozechner/pi-coding-agent "$@"' -- "$@"
 `;
