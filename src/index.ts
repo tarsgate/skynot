@@ -31,7 +31,36 @@ function getPiInstallDir(): string {
   return `${getPiHome()}/pi`;
 }
 
-async function askQuestion(query: string): Promise<string> {
+async function askQuestion(query: string, silent = false): Promise<string> {
+  if (silent) {
+    return new Promise<string>((resolve) => {
+      process.stdout.write(query);
+      const stdin = process.stdin;
+      const wasRaw = stdin.isRaw;
+      stdin.setRawMode(true);
+      stdin.resume();
+      stdin.setEncoding('utf-8');
+      let input = '';
+      const onData = (char: string) => {
+        if (char === '\n' || char === '\r' || char === '\u0004') {
+          stdin.removeListener('data', onData);
+          stdin.setRawMode(wasRaw);
+          stdin.pause();
+          process.stdout.write('\n');
+          resolve(input);
+        } else if (char === '\u0003') {
+          // Ctrl+C
+          stdin.setRawMode(wasRaw);
+          process.exit(1);
+        } else if (char === '\u007F' || char === '\b') {
+          input = input.slice(0, -1);
+        } else {
+          input += char;
+        }
+      };
+      stdin.on('data', onData);
+    });
+  }
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -66,7 +95,7 @@ async function ensurePiUser(): Promise<void> {
     return;
   }
   console.log('Creating user "pi"...');
-  const password = await askQuestion('Enter sudo password (required to create user): ');
+  const password = await askQuestion('Enter sudo password (required to create user): ', true);
   const platform = os.platform();
   if (platform === 'darwin') {
     // macOS: use sysadminctl to create the user with a home directory and /bin/zsh shell
@@ -84,7 +113,7 @@ async function installAgent(): Promise<void> {
   try {
     await execAsync(`sudo -u pi bash -c '${cmd}'`);
   } catch (e) {
-    const password = await askQuestion('Enter sudo password (required to install npm package as pi): ');
+    const password = await askQuestion('Enter sudo password (required to install npm package as pi): ', true);
     await runSudo(`-u pi bash -c '${cmd}'`, password.trim());
   }
   console.log('Package installed.');
@@ -101,7 +130,7 @@ async function updatePath(): Promise<void> {
   try {
     await execAsync(`sudo -u pi bash -c "${checkCmd}"`);
   } catch (e) {
-    const password = await askQuestion(`Enter sudo password (required to modify ${rcFile}): `);
+    const password = await askQuestion(`Enter sudo password (required to modify ${rcFile}): `, true);
     await runSudo(`-u pi bash -c "${checkCmd}"`, password.trim());
   }
   console.log(`${rcFile} updated.`);
@@ -153,7 +182,7 @@ async function launchAgent(): Promise<void> {
     await execAsync(`sudo -u pi bash -c 'cd ${installDir} && npx pi-coding-agent'`);
   } catch (e) {
     const installDir = getPiInstallDir();
-    const password = await askQuestion('Enter sudo password (required to launch agent): ');
+    const password = await askQuestion('Enter sudo password (required to launch agent): ', true);
     await runSudo(`-u pi bash -c 'cd ${installDir} && npx pi-coding-agent'`, password.trim());
   }
 }
