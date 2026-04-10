@@ -139,7 +139,10 @@ async function ensurePiUser(): Promise<void> {
   console.log('Creating user "pi"...');
   const platform = os.platform();
   if (platform === 'darwin') {
-    await askSudoPasswordAndRun(`sysadminctl -addUser pi -home /Users/pi -shell /bin/zsh`, 'required to create user');
+    await askSudoPasswordAndRun(
+      `sysadminctl -addUser pi -home /Users/pi -shell /bin/zsh && createhomedir -c -u pi 2>/dev/null; mkdir -p /Users/pi && chown pi:staff /Users/pi`,
+      'required to create user',
+    );
   } else {
     await askSudoPasswordAndRun('useradd -m -s /bin/bash pi', 'required to create user');
   }
