@@ -153,14 +153,10 @@ async function installAgent(): Promise<void> {
   const installDir = getPiInstallDir();
   console.log(`Installing @mariozechner/pi-coding-agent into ${installDir}...`);
   const cmd = `mkdir -p ${installDir} && cd ${installDir} && npm install @mariozechner/pi-coding-agent`;
-  try {
-    await execAsync(`sudo -u pi bash -c '${cmd}'`);
-  } catch (e) {
-    await askSudoPasswordAndRun(
-      `su -s /bin/bash pi -c '${cmd}'`,
-      'required to install npm package as pi',
-    );
-  }
+  await askSudoPasswordAndRun(
+    `su -s /bin/bash pi -c '${cmd}'`,
+    'required to install npm package as pi',
+  );
   console.log('Package installed.');
 }
 
@@ -172,14 +168,10 @@ async function updatePath(): Promise<void> {
   const rcPath = `${piHome}/${rcFile}`;
   // Append line if not already present
   const checkCmd = `grep -Fx '${line}' ${rcPath} 2>/dev/null || echo '${line}' >> ${rcPath}`;
-  try {
-    await execAsync(`sudo -u pi bash -c "${checkCmd}"`);
-  } catch (e) {
-    await askSudoPasswordAndRun(
-      `su -s /bin/bash pi -c "${checkCmd}"`,
-      `required to modify ${rcFile}`,
-    );
-  }
+  await askSudoPasswordAndRun(
+    `su -s /bin/bash pi -c "${checkCmd}"`,
+    `required to modify ${rcFile}`,
+  );
   console.log(`${rcFile} updated.`);
 }
 
@@ -225,14 +217,10 @@ exec sudo -u pi bash -c 'cd ${installDir} && npx pi-coding-agent "$@"' -- "$@"
 async function launchAgent(): Promise<void> {
   console.log('Launching pi-coding-agent...');
   const installDir = getPiInstallDir();
-  try {
-    await execAsync(`sudo -u pi bash -c 'cd ${installDir} && npx pi-coding-agent'`);
-  } catch (e) {
-    await askSudoPasswordAndRun(
-      `su -s /bin/bash pi -c 'cd ${installDir} && npx pi-coding-agent'`,
-      'required to launch agent',
-    );
-  }
+  await askSudoPasswordAndRun(
+    `su -s /bin/bash pi -c 'cd ${installDir} && npx pi-coding-agent'`,
+    'required to launch agent',
+  );
 }
 
 async function main() {
