@@ -88,6 +88,7 @@ function runSudoWithPassword(command: string, password: string, asUser?: string)
     sudoArgs.push('bash', '-c', command);
     const child = spawn('sudo', sudoArgs, {
       stdio: ['pipe', 'pipe', 'pipe'],
+      cwd: '/tmp',
     });
     child.stdin.write(password + '\n');
     child.stdin.end();
@@ -305,6 +306,17 @@ exec sudo -i -u pi bash -c 'cd ${installDir} && npx --yes @mariozechner/pi-codin
   }
 }
 
+const RECOMMENDED_EXTENSIONS = ['npm:awto-pi-lot'];
+
+async function installExtensions(): Promise<void> {
+  const installDir = getPiInstallDir();
+  for (const ext of RECOMMENDED_EXTENSIONS) {
+    console.log(`Installing recommended extension: ${ext}...`);
+    await runAsPi(`${installDir}/node_modules/.bin/pi install ${ext}`);
+    console.log(`Extension ${ext} installed.`);
+  }
+}
+
 async function launchAgent(): Promise<void> {
   const scriptPath = path.join(os.homedir(), 'bin', 'pi');
   const child = spawn(scriptPath, [], { stdio: 'inherit' });
@@ -339,7 +351,8 @@ async function main() {
   program
     .version(pkg.version)
     .description(pkg.description)
-    .option('--update', 'Wipe and reinstall pi-coding-agent to get the latest version');
+    .option('--update', 'Wipe and reinstall pi-coding-agent to get the latest version')
+    .option('-e, --extensions', 'Install recommended extensions after installing pi-coding-agent');
   program.parse(process.argv);
   const opts = program.opts();
 
@@ -350,6 +363,11 @@ async function main() {
   }
 
   await installAgent();
+
+  if (opts.extensions) {
+    await installExtensions();
+  }
+
   await updatePath();
   await createLauncherScript();
   await launchAgent();
