@@ -330,16 +330,36 @@ async function launchAgent(): Promise<void> {
   });
 }
 
+async function wipeInstallation(): Promise<void> {
+  const installDir = getPiInstallDir();
+  if (fs.existsSync(installDir)) {
+    console.log(`Wiping existing installation at ${installDir}...`);
+    await runAsPi(`rm -rf ${installDir}`);
+    console.log('Installation wiped.');
+  } else {
+    console.log('No existing installation found, nothing to wipe.');
+  }
+}
+
 async function main() {
   if (os.platform() === 'win32') {
     throw new Error('Windows is not supported. Please run skynot on Linux or macOS.');
   }
 
   const program = new Command();
-  program.version(pkg.version).description(pkg.description);
+  program
+    .version(pkg.version)
+    .description(pkg.description)
+    .option('--update', 'Wipe and reinstall pi-coding-agent to get the latest version');
   program.parse(process.argv);
+  const opts = program.opts();
 
   await ensurePiUser();
+
+  if (opts.update) {
+    await wipeInstallation();
+  }
+
   await installAgent();
   await updatePath();
   await createLauncherScript();
