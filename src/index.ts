@@ -241,18 +241,6 @@ for user_home in "$HOME_BASE"/*/; do
     continue
   fi
 
-  # On macOS, handle /Users/Shared separately
-  if [ "$user_home" = "/Users/Shared/" ]; then
-    perms=$(stat -f "%Sp" "$user_home" 2>/dev/null || stat -c "%A" "$user_home" 2>/dev/null)
-    if [ -n "$perms" ]; then
-      group_others="\${perms:4:6}"
-      if echo "$group_others" | grep -q '[rwx]'; then
-        SHARED_DIR_WARNING="NOTE: /Users/Shared is world-accessible. This is a macOS default, but you may want to restrict it manually if it contains sensitive data."
-      fi
-    fi
-    continue
-  fi
-
   # Check if group or others have any permissions (r, w, or x)
   perms=$(stat -f "%Sp" "$user_home" 2>/dev/null || stat -c "%A" "$user_home" 2>/dev/null)
   if [ -z "$perms" ]; then
@@ -263,7 +251,12 @@ for user_home in "$HOME_BASE"/*/; do
   group_others="\${perms:4:6}"
   # Check if any of group/others have r, w, or x
   if echo "$group_others" | grep -q '[rwx]'; then
-    EXPOSED_DIRS+=("$user_home")
+    # On macOS, handle /Users/Shared separately (it's world-accessible by default)
+    if [ "$user_home" = "/Users/Shared/" ]; then
+      SHARED_DIR_WARNING="NOTE: /Users/Shared is world-accessible. This is a macOS default, but you may want to restrict it manually if it contains sensitive data."
+    else
+      EXPOSED_DIRS+=("$user_home")
+    fi
   fi
 done
 
