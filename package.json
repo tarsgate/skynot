@@ -1,6 +1,6 @@
 {
   "name": "skynot",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Quick NPX tool to set up a pi user and install the pi-coding-agent",
   "main": "dist/index.js",
   "bin": {
@@ -11,8 +11,26 @@
     "prepublishOnly": "npm run build",
     "run": "npm install && npm run build && node dist/index.js"
   },
-  "author": "",
-  "license": "MIT",
+  "keywords": [
+    "pi",
+    "coding-agent",
+    "ai",
+    "llm",
+    "cli",
+    "tui",
+    "agent",
+    "installer"
+  ],
+  "author": "Andres G. Aragoneses",
+  "license": "AGPL",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nblockchain/skynot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/nblockchain/skynot/issues"
+  },
+  "homepage": "https://github.com/nblockchain/skynot#readme",
   "dependencies": {
     "commander": "^11.0.0"
   },
