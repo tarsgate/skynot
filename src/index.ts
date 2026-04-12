@@ -226,6 +226,7 @@ async function createLauncherScript(): Promise<void> {
   }
 
   const piHome = getPiHome();
+  const workDir = path.join(piHome, 'Documents', 'Coding');
   const platform = os.platform();
   const homeBase = platform === 'darwin' ? '/Users' : '/home';
 
@@ -285,7 +286,7 @@ if [ \${#EXPOSED_DIRS[@]} -gt 0 ]; then
 fi
 
 echo "Launching pi-coding-agent with pi user (sudo is required to impersonate 'pi' user)..."
-exec sudo -i -u pi bash -c 'export npm_config_prefix=$HOME/.npm-global && cd ${installDir} && ${installDir}/node_modules/.bin/pi "$@"' -- "$@"
+exec sudo -i -u pi bash -c 'export npm_config_prefix=$HOME/.npm-global && mkdir -p ${workDir} && cd ${workDir} && ${installDir}/node_modules/.bin/pi "$@"' -- "$@"
 `;
   fs.writeFileSync(scriptPath, scriptContent, { mode: 0o755 });
   console.log('Launcher script created.');
