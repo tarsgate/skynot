@@ -285,7 +285,7 @@ if [ \${#EXPOSED_DIRS[@]} -gt 0 ]; then
 fi
 
 echo "Launching pi-coding-agent with pi user (sudo is required to impersonate 'pi' user)..."
-exec sudo -i -u pi bash -c 'export npm_config_prefix=$HOME/.npm-global && cd ${installDir} && npx --yes ${AGENT_PACKAGE} "$@"' -- "$@"
+exec sudo -i -u pi bash -c 'export npm_config_prefix=$HOME/.npm-global && cd ${installDir} && ${installDir}/node_modules/.bin/pi "$@"' -- "$@"
 `;
   fs.writeFileSync(scriptPath, scriptContent, { mode: 0o755 });
   console.log('Launcher script created.');
