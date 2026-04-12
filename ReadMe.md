@@ -29,6 +29,7 @@ The following command‑line flags are available:
 | `-e, --extensions` | After installing `pi-coding-agent`, also install recommended extensions. |
 | `-h, --help` | Show the help message with all available options. |
 | `-V, --version` | Show the version number. |
+| `-a, --auth` | Ask about auth details (provider name and API key) to add it to launcher script. |
 
 ## Installation Steps (performed automatically)
 
