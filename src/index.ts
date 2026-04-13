@@ -90,6 +90,7 @@ function runSudoWithPassword(command: string, password: string, asUser?: string,
     sudoArgs.push('bash', '-c', command);
     const child = spawn('sudo', sudoArgs, {
       stdio: ['pipe', 'pipe', 'pipe'],
+      // this is a workaround to errors like 'shell-init: error retrieving current directory: getcwd: cannot access parent directories: Permission denied
       cwd: '/tmp',
     });
     child.stdin.write(password + '\n');
