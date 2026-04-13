@@ -118,7 +118,7 @@ function runSudoWithPassword(command: string, password: string, asUser?: string,
         // Sanitize: never include the password in error messages
         const escaped = password.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const safeStderr = stderr.replace(new RegExp(escaped, 'g'), '***');
-        reject(new Error(`sudo command failed (exit code ${code}): ${safeStderr.trim()}`));
+        reject(new Error(`sudo command '${command}' failed (exit code ${code}): ${safeStderr.trim()}`));
       }
     });
   });
