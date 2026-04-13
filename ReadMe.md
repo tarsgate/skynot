@@ -47,4 +47,4 @@ Please note, `-u` would technically not wipe or reinstall extensions, as they no
 ## Notes
 
 - The script runs many operations as the `pi` user via `sudo`. It sets `npm_config_prefix` to `$HOME/.npm-global` to avoid permission errors when installing extensions.
-- To test locally before publishing, use `npm run run -- [options]` (e.g. `npm run run -- -e`).
+- To test locally before publishing, use `npm run run -- [options]` (e.g. `npm run exec -- -e`).
