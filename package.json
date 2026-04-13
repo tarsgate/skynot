@@ -7,9 +7,9 @@
     "skynot": "dist/index.js"
   },
   "scripts": {
-    "build": "npx tsc",
+    "build": "npm install && npx tsc",
     "prepublishOnly": "npm run build",
-    "run": "npm install && npm run build && node dist/index.js"
+    "exec": "npm run build && node dist/index.js"
   },
   "keywords": [
     "pi",
