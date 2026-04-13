@@ -31,6 +31,7 @@ The following command‑line flags are available:
 | `-V, --version` | Show the version number. |
 | `-a, --auth` | Ask about auth details (provider name and API key) to add it to launcher script. |
 | `-s, --ssh` | Copy current user's SSH keys to the `pi` user for git SSH access (and add GitHub to known_hosts). |
+| `-v, --verbose` | Show detailed output from install commands (useful for slow connections or debugging). |
 
 Please note, `-u` would technically not wipe or reinstall extensions, as they normally live in a different place (`.pi` subdir under `pi` user's $HOME, and/or $NPM_CONFIG_PREFIX dir).
 

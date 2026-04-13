@@ -81,7 +81,7 @@ const MAX_SUDO_RETRIES = 3;
 // Cached sudo password so we only ask once
 let cachedSudoPassword: string | null = null;
 
-function runSudoWithPassword(command: string, password: string, asUser?: string): Promise<void> {
+function runSudoWithPassword(command: string, password: string, asUser?: string, verbose?: boolean): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     const sudoArgs = ['-S', '-k'];
     if (asUser) {
@@ -96,11 +96,17 @@ function runSudoWithPassword(command: string, password: string, asUser?: string)
     child.stdin.end();
 
     let stderr = '';
+    if (verbose) {
+      child.stdout.pipe(process.stdout);
+    }
     child.stderr.on('data', (data: Buffer) => {
       const line = data.toString();
       // Filter out sudo's own password prompt
       if (!line.includes('Password:') && !line.includes('password for')) {
         stderr += line;
+        if (verbose) {
+          process.stderr.write(line);
+        }
       }
     });
 
@@ -134,7 +140,7 @@ async function askSudoPasswordAndRun(command: string, reason: string): Promise<v
   }
 }
 
-async function runAsPi(command: string): Promise<void> {
+async function runAsPi(command: string, verbose?: boolean): Promise<void> {
   if (!cachedSudoPassword) {
     const password = await askQuestion('Enter sudo password (required to run as pi): ', true);
     cachedSudoPassword = password.trim();
@@ -143,7 +149,7 @@ async function runAsPi(command: string): Promise<void> {
   // Set HOME and cd to pi's home to avoid inheriting the current user's
   // working directory (which pi can't access) and npm cache.
   const wrappedCommand = `export HOME=${piHome} && export npm_config_prefix=${piHome}/.npm-global && cd ${piHome} && ${command}`;
-  await runSudoWithPassword(wrappedCommand, cachedSudoPassword, 'pi');
+  await runSudoWithPassword(wrappedCommand, cachedSudoPassword, 'pi', verbose);
 }
 
 async function userExists(username: string): Promise<boolean> {
@@ -177,7 +183,7 @@ async function ensurePiUser(): Promise<void> {
   console.log('User "pi" created.');
 }
 
-async function installAgent(): Promise<void> {
+async function installAgent(verbose?: boolean): Promise<void> {
   const installDir = getPiInstallDir();
   const [scope, name] = AGENT_PACKAGE.split('/');
   const packageDir = path.join(installDir, 'node_modules', scope, name);
@@ -186,8 +192,9 @@ async function installAgent(): Promise<void> {
     return;
   }
   console.log(`Installing ${AGENT_PACKAGE} into ${installDir}...`);
-  const cmd = `mkdir -p ${installDir} && cd ${installDir} && npm install ${AGENT_PACKAGE}`;
-  await runAsPi(cmd);
+  const npmLogLevel = verbose ? ' --loglevel info' : '';
+  const cmd = `mkdir -p ${installDir} && cd ${installDir} && npm install${npmLogLevel} ${AGENT_PACKAGE}`;
+  await runAsPi(cmd, verbose);
   console.log('Package installed.');
 }
 
@@ -312,11 +319,11 @@ exec sudo -i -u pi bash -c 'export npm_config_prefix=$HOME/.npm-global && mkdir 
 
 const RECOMMENDED_EXTENSIONS = ['npm:awto-pi-lot'];
 
-async function installExtensions(): Promise<void> {
+async function installExtensions(verbose?: boolean): Promise<void> {
   const installDir = getPiInstallDir();
   for (const ext of RECOMMENDED_EXTENSIONS) {
     console.log(`Installing recommended extension: ${ext}...`);
-    await runAsPi(`${installDir}/node_modules/.bin/pi install ${ext}`);
+    await runAsPi(`${installDir}/node_modules/.bin/pi install ${ext}`, verbose);
     console.log(`Extension ${ext} installed.`);
   }
 }
@@ -427,6 +434,7 @@ async function main() {
     .version(pkg.version, '-V, --version', 'Output the version number')
     .description(pkg.description)
     .helpOption('-h, --help', 'Show this help message')
+    .option('-v, --verbose', 'Show detailed output from install commands (useful for slow connections or debugging)')
     .option('-u, --update', `Wipe and reinstall Pi, to get the latest version`)
     .option('-e, --extensions', `Install recommended extensions after installing Pi`)
     .option('-a, --auth', 'Configure provider authentication (creates auth.json for the pi user)')
@@ -440,10 +448,10 @@ async function main() {
     await wipeInstallation();
   }
 
-  await installAgent();
+  await installAgent(opts.verbose);
 
   if (opts.extensions) {
-    await installExtensions();
+    await installExtensions(opts.verbose);
   }
 
   if (opts.auth) {
