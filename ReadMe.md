@@ -23,15 +23,15 @@ npx skynot [options]
 
 The following command‑line flags are available:
 
-| Flag | Description |
-|------|-------------|
-| `-u, --update` | Wipe any existing installation of Pi and reinstall, to get the latest version. |
-| `-e, --extensions` | After installing Pi, also install recommended extensions. |
-| `-h, --help` | Show the help message with all available options. |
-| `-V, --version` | Show the version number. |
-| `-a, --auth` | Ask about auth details (provider name and API key) to add it to launcher script. |
-| `-s, --ssh` | Copy current user's SSH keys to the `pi` user for git SSH access (and add GitHub to known_hosts). |
-| `-v, --verbose` | Show detailed output from install commands (useful for slow connections or debugging). |
+| Flag | Long Flag      | Description                                                                      |
+|------|----------------|----------------------------------------------------------------------------------|
+| `-h` | `--help`       | Show the help message with all available options.                                |
+| `-u` | `--update`     | Wipe any existing installation of Pi and reinstall, to get the latest version.   |
+| `-e` | `--extensions` | After installing Pi, also install recommended extensions.                        |
+| `-a` | `--auth`       | Ask about auth details (provider name and API key) to add it to launcher script. |
+| `-s` | `--ssh`        | Copy SSH keys to the `pi` user for git+ssh (& add GitHub to `known_hosts`).      |
+| `-v` | `--verbose`    | Show more output from install commands (useful for debugging/low-bandwidth).     |
+| `-V` | `--version`    | Show the version number.                                                         |
 
 Please note, `-u` would technically not wipe or reinstall extensions, as they normally live in a different place (`.pi` subdir under `pi` user's $HOME, and/or $NPM_CONFIG_PREFIX dir).
 
