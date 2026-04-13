@@ -367,6 +367,43 @@ chmod 600 ${authFilePath}`);
   console.log('Auth configuration saved.');
 }
 
+async function copySshKeys(): Promise<void> {
+  const currentUserHome = os.homedir();
+  const sshDir = path.join(currentUserHome, '.ssh');
+  const privateKey = path.join(sshDir, 'id_rsa');
+  const publicKey = path.join(sshDir, 'id_rsa.pub');
+
+  if (!fs.existsSync(privateKey) || !fs.existsSync(publicKey)) {
+    console.error('SSH keys not found at ~/.ssh/id_rsa and ~/.ssh/id_rsa.pub. Skipping SSH setup.');
+    return;
+  }
+
+  const piHome = getPiHome();
+  const piSshDir = path.join(piHome, '.ssh');
+
+  console.log(`Copying SSH keys to ${piSshDir}...`);
+
+  const privateKeyContent = fs.readFileSync(privateKey, 'utf-8');
+  const publicKeyContent = fs.readFileSync(publicKey, 'utf-8');
+
+  // Create .ssh dir, write keys, set proper ownership and permissions
+  await runAsPi(`mkdir -p ${piSshDir} && chmod 700 ${piSshDir}`);
+
+  // Write private key
+  await runAsPi(`cat > ${piSshDir}/id_rsa << 'SKYNOT_SSH_EOF'
+${privateKeyContent}
+SKYNOT_SSH_EOF
+chmod 600 ${piSshDir}/id_rsa`);
+
+  // Write public key
+  await runAsPi(`cat > ${piSshDir}/id_rsa.pub << 'SKYNOT_SSH_EOF'
+${publicKeyContent}
+SKYNOT_SSH_EOF
+chmod 644 ${piSshDir}/id_rsa.pub`);
+
+  console.log('SSH keys copied and permissions set.');
+}
+
 async function wipeInstallation(): Promise<void> {
   const installDir = getPiInstallDir();
   if (fs.existsSync(installDir)) {
@@ -390,7 +427,8 @@ async function main() {
     .helpOption('-h, --help', 'Show this help message')
     .option('-u, --update', `Wipe and reinstall Pi, to get the latest version`)
     .option('-e, --extensions', `Install recommended extensions after installing Pi`)
-    .option('-a, --auth', 'Configure provider authentication (creates auth.json for the pi user)');
+    .option('-a, --auth', 'Configure provider authentication (creates auth.json for the pi user)')
+    .option('-s, --ssh', 'Copy current user\'s SSH keys (id_rsa, id_rsa.pub) to the pi user for git SSH access');
   program.parse(process.argv);
   const opts = program.opts();
 
@@ -408,6 +446,10 @@ async function main() {
 
   if (opts.auth) {
     await configureAuth();
+  }
+
+  if (opts.ssh) {
+    await copySshKeys();
   }
 
   await updatePath();
