@@ -31,6 +31,8 @@ The following command‑line flags are available:
 | `-V, --version` | Show the version number. |
 | `-a, --auth` | Ask about auth details (provider name and API key) to add it to launcher script. |
 
+Please note, `-u` would technically not wipe or reinstall extensions, as they normally live in a different place (`.pi` subdir under `pi` user's $HOME, and/or $NPM_CONFIG_PREFIX dir).
+
 ## Installation Steps (performed automatically)
 
 1. Ensure a `pi` user exists (created if missing).
