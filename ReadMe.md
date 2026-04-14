@@ -44,7 +44,7 @@ Please note, `-u` would technically not wipe or reinstall extensions, as they no
 3. Install the recommended extensions and/or authentication files if user used flags for them.
 4. Add the agent's binary directory to the `pi` user's `$PATH`.
 5. Create a launcher script at `$HOME/bin/pi` for the current user.
-6. Launch the agent.
+6. Create a proper work dir inside `~pi` owned by `pi` and a new `aiteam` group, which `pi` and current user will be members of.
 
 
 ## Notes

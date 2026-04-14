@@ -11,6 +11,8 @@ const execAsync = promisify(exec);
 
 const AGENT_PACKAGE = '@mariozechner/pi-coding-agent';
 const AGENT_USER = 'pi';
+const LAUNCHER_SCRIPT_FILENAME = 'pi';
+const AGENT_GROUP_NAME = "aiteam";
 
 function getShellRcFile(): string {
   const platform = os.platform();
@@ -226,7 +228,7 @@ async function updatePath(): Promise<void> {
 async function createLauncherScript(): Promise<void> {
   const currentUserHome = os.homedir();
   const binDir = path.join(currentUserHome, 'bin');
-  const scriptPath = path.join(binDir, 'pi');
+  const scriptPath = path.join(binDir, LAUNCHER_SCRIPT_FILENAME);
   const installDir = getPiInstallDir();
 
   console.log(`Creating launcher script at ${scriptPath}...`);
@@ -237,12 +239,13 @@ async function createLauncherScript(): Promise<void> {
   }
 
   const piHome = getPiHome();
-  const workDir = path.join(piHome, 'Documents', 'Coding');
   const platform = os.platform();
   const homeBase = platform === 'darwin' ? '/Users' : '/home';
 
   // Write the launcher shell script with permission checks
   const scriptContent = `#!/bin/bash
+
+CURRENT_DIR=$PWD
 
 echo "About to launch pi-coding-agent..."
 
@@ -297,7 +300,7 @@ if [ \${#EXPOSED_DIRS[@]} -gt 0 ]; then
 fi
 
 echo "Launching pi-coding-agent with ${AGENT_USER} user (sudo is required to impersonate '${AGENT_USER}' user)..."
-exec sudo -i -u ${AGENT_USER} bash -c "export npm_config_prefix=$PI_HOME/.npm-global && mkdir -p ${workDir} && cd ${workDir} && ${installDir}/node_modules/.bin/pi"
+exec sudo -i -u ${AGENT_USER} bash -c "export npm_config_prefix=$PI_HOME/.npm-global && cd $CURRENT_DIR && ${installDir}/node_modules/.bin/pi"
 `;
   fs.writeFileSync(scriptPath, scriptContent, { mode: 0o755 });
   console.log('Launcher script created.');
@@ -319,6 +322,88 @@ exec sudo -i -u ${AGENT_USER} bash -c "export npm_config_prefix=$PI_HOME/.npm-gl
   } else {
     console.log(`$HOME/bin already in PATH (${rcFile}).`);
   }
+}
+
+async function createMacOsGroup(sudoReason: string, freeGroupIdFindingCount: number): Promise<void> {
+  if (freeGroupIdFindingCount == 0) {
+    await askSudoPasswordAndRun(`dscl . -create /Groups/${AGENT_GROUP_NAME}`, sudoReason);
+    console.log(`Group "${AGENT_GROUP_NAME}" created without group assignment yet`);
+  }
+
+  const maxTriesForFindingAFreeGroupId = 50;
+
+  // some SO post recommends giving gids between 100-499: https://superuser.com/a/1842207
+  const gid = 444 - freeGroupIdFindingCount;
+
+  try {
+    await askSudoPasswordAndRun(`dscl . -create /Groups/${AGENT_GROUP_NAME} gid ${gid}`, sudoReason);
+    console.log(`Group "${AGENT_GROUP_NAME}" created (group ID: ${gid}).`);
+  } catch (createErr: unknown) {
+    const errMsg = createErr instanceof Error ? createErr.message : String(createErr);
+    if (errMsg.includes('eDSRecordAlreadyExists') || errMsg.includes('already exists')) {
+      if (freeGroupIdFindingCount > maxTriesForFindingAFreeGroupId) {
+        throw Error("Could not find a free gid for new group");
+      } else {
+        return createMacOsGroup(sudoReason, freeGroupIdFindingCount + 1);
+      }
+    }
+  }
+}
+
+async function setupWorkDir(): Promise<string> {
+  const piHome = getPiHome();
+  const workDir = path.join(getPiHome(), 'Work');
+  const currentUser = os.userInfo().username;
+  const platform = os.platform();
+
+  // Create group if it doesn't exist
+  try {
+    if (platform === 'darwin') {
+      await execAsync(`dscl . -read /Groups/${AGENT_GROUP_NAME}`);
+    } else {
+      await execAsync(`getent group ${AGENT_GROUP_NAME}`);
+    }
+    console.log(`Group "${AGENT_GROUP_NAME}" already exists.`);
+  } catch {
+    console.log(`Creating group "${AGENT_GROUP_NAME}"...`);
+    const reason = `required to create ${AGENT_GROUP_NAME} group`;
+    if (platform === 'darwin') {
+      await createMacOsGroup(reason, 0);
+    } else {
+      await askSudoPasswordAndRun(`groupadd ${AGENT_GROUP_NAME}`, reason);
+      console.log(`Group "${AGENT_GROUP_NAME}" created.`);
+    }
+  }
+
+  // Add users to AI group
+  for (const user of [AGENT_USER, currentUser]) {
+    try {
+      const { stdout } = await execAsync(`id -nG ${user}`);
+      if (stdout.split(/\s+/).includes(AGENT_GROUP_NAME)) {
+        console.log(`User "${user}" is already in group "${AGENT_GROUP_NAME}".`);
+        continue;
+      }
+    } catch {
+      // user might not exist yet or id failed, try to add anyway
+    }
+    console.log(`Adding user "${user}" to group "${AGENT_GROUP_NAME}"...`);
+    if (platform === 'darwin') {
+      await askSudoPasswordAndRun(`dseditgroup -o edit -a ${user} -t user ${AGENT_GROUP_NAME}`, `required to add ${user} to ${AGENT_GROUP_NAME} group`);
+    } else {
+      await askSudoPasswordAndRun(`usermod -aG ${AGENT_GROUP_NAME} ${user}`, `required to add ${user} to ${AGENT_GROUP_NAME} group`);
+    }
+    console.log(`User "${user}" added to group "${AGENT_GROUP_NAME}".`);
+  }
+
+  console.log(`Setting up group permissions...`);
+  await askSudoPasswordAndRun(`chown ${AGENT_USER}:${AGENT_GROUP_NAME} ${piHome} && chmod g+rwx ${piHome}`, `required to set ${AGENT_USER}'s home to belong to ${AGENT_GROUP_NAME} group`);
+
+  // Create work directory owned by pi:${AGENT_GROUP_NAME} with group rwx
+  console.log(`Setting up work directory at ${workDir}...`);
+  await askSudoPasswordAndRun(`mkdir -p ${workDir} && chown ${AGENT_USER}:${AGENT_GROUP_NAME} ${workDir} && chmod g+rwx ${workDir}`, 'required to set up work directory');
+  console.log('Work directory ready.');
+
+  return workDir;
 }
 
 const RECOMMENDED_EXTENSIONS = ['npm:awto-pi-lot'];
@@ -468,7 +553,15 @@ async function main() {
 
   await updatePath();
   await createLauncherScript();
-  await launchAgent();
+
+  const workDir = await setupWorkDir();
+  console.log(`\nPi is ready to be launched with '${LAUNCHER_SCRIPT_FILENAME}' command.`);
+  console.log(`\nRECOMMENDED next steps:`);
+  console.log(`1. Close this shell session and open a new one (for the group permissions to take effect)`);
+  console.log(`2. \`cd\` into '${workDir}'`);
+  console.log(`3. Clone the git repository where you will work on`);
+  console.log(`4. \`cd\` into the cloned repository`);
+  console.log(`5. Launch via \`${LAUNCHER_SCRIPT_FILENAME}\`\n`);
 }
 
 main().catch((err) => {
