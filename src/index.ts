@@ -7,10 +7,12 @@ import * as os from 'os';
 import { Command } from 'commander';
 import { Option, Some, Nothing } from 'fp-sdk';
 import pkg from '../package.json';
+import { None, OptionHelpers } from "fp-sdk";
 
 const execAsync = promisify(exec);
 
 const AGENT_PACKAGE = '@mariozechner/pi-coding-agent';
+const AGENT_GITHUB_REPO = "badlogic/pi-mono";
 const AGENT_USER = 'pi';
 const LAUNCHER_SCRIPT_FILENAME = 'pi';
 const AGENT_GROUP_NAME = "aiteam";
@@ -213,7 +215,29 @@ async function ensurePiUser(): Promise<void> {
   console.log(`User "${AGENT_USER}" created.`);
 }
 
-async function installAgent(verbose?: boolean): Promise<void> {
+function runCommand(command: string, args: string[], verbose?: boolean) : Promise<void> {
+  return new Promise((resolve, reject) => {
+    const stdio = verbose ? "inherit" : "ignore";
+    const child = spawn(command, args, { 
+      stdio: [ stdio, stdio, stdio ]
+    });
+
+    child.on("error", (error: Error) => {
+      reject(error);
+    });
+
+    child.on("close", (code: number | null) => {
+      if (code === 0) {
+        resolve();
+      }
+      else {
+        reject(new Error(`command '${command}' failed (exit code ${code})`));
+      }
+    });
+  });
+}
+
+async function installAgentUsingNpm(verbose?: boolean): Promise<void> {
   const installDir = getPiInstallDir();
   const [scope, name] = AGENT_PACKAGE.split('/');
   const packageDir = path.join(installDir, 'node_modules', scope, name);
@@ -226,6 +250,53 @@ async function installAgent(verbose?: boolean): Promise<void> {
   const cmd = `mkdir -p ${installDir} && cd ${installDir} && npm install${npmLogLevel} ${AGENT_PACKAGE}`;
   await runAsPi(cmd, verbose);
   console.log('Package installed.');
+}
+
+async function checkWget(): Promise<void> {
+  try {
+    await execAsync("which wget");
+  }
+  catch (err: any) {
+    console.error("Error: wget not found. Either install wget or use --npm flag.");
+    process.exit(1);
+  }
+}
+
+async function installAgentFromTarball(verbose?: boolean): Promise<void> {
+  const piHome = getPiHome();
+  const piInstallDir = getPiInstallDir();
+  const platform = os.platform();
+  const arch = os.arch();
+  const tarballName = `pi-${platform}-${arch}.tar.gz`;
+
+  if (fs.existsSync(piInstallDir)) {
+    console.log(`Pi is already installed, skipping.`);
+    return;
+  }
+  
+  console.log(`Installing ${tarballName} into ${piInstallDir}...`);
+  
+  const releasesUrl = `https://api.github.com/repos/${AGENT_GITHUB_REPO}/releases/latest`;
+  const response = await fetch(releasesUrl);
+  if (!response.ok) {
+    throw new Error(`Error when getting releases: ${response.status}`);
+  }
+  const releasesJson = await response.json();
+
+  const assets = releasesJson["assets"] as Record<string, any>[];
+  const asset = OptionHelpers.OfObj(assets.find((asset) => asset["name"] === tarballName));
+  if (asset instanceof None) {
+    throw new Error(`Asset with tarball ${tarballName} not found in the list of release assets.`);
+  }
+  const assetUrl = asset.value["browser_download_url"];
+
+  const tarballPath = path.join("/var/tmp", tarballName);
+  await runCommand('wget', [ assetUrl, `--output-document=${tarballPath}` ], verbose);
+
+  const tarVerboseFlag = verbose ? "--verbose" : "";
+  const cmd = `cd ${piHome} && tar --extract --gzip ${tarVerboseFlag} --file ${tarballPath}`;
+  await runAsPi(cmd, verbose);
+  console.log(`Installed pi from tarball.`);
 }
 
 async function updatePath(): Promise<void> {
@@ -249,11 +320,10 @@ async function updatePath(): Promise<void> {
   console.log(`${rcFile} updated.`);
 }
 
-async function createLauncherScript(): Promise<void> {
+async function createLauncherScript(piBinaryPath: string): Promise<void> {
   const currentUserHome = os.homedir();
   const binDir = path.join(currentUserHome, 'bin');
   const scriptPath = path.join(binDir, LAUNCHER_SCRIPT_FILENAME);
-  const installDir = getPiInstallDir();
 
   console.log(`Creating launcher script at ${scriptPath}...`);
 
@@ -324,7 +394,7 @@ if [ \${#EXPOSED_DIRS[@]} -gt 0 ]; then
 fi
 
 echo "Launching pi-coding-agent with ${AGENT_USER} user (sudo is required to impersonate '${AGENT_USER}' user)..."
-exec sudo -i -u ${AGENT_USER} bash -c "export npm_config_prefix=$PI_HOME/.npm-global && cd $CURRENT_DIR && ${installDir}/node_modules/.bin/pi"
+exec sudo -i -u ${AGENT_USER} bash -c "export npm_config_prefix=$PI_HOME/.npm-global && cd $CURRENT_DIR && ${piBinaryPath}"
 `;
   fs.writeFileSync(scriptPath, scriptContent, { mode: 0o755 });
   console.log('Launcher script created.');
@@ -432,11 +502,10 @@ async function setupWorkDir(): Promise<string> {
 
 const RECOMMENDED_EXTENSIONS = ['npm:awto-pi-lot'];
 
-async function installExtensions(verbose?: boolean): Promise<void> {
-  const installDir = getPiInstallDir();
+async function installExtensions(piBinaryPath: string, verbose?: boolean): Promise<void> {
   for (const ext of RECOMMENDED_EXTENSIONS) {
     console.log(`Installing recommended extension: ${ext}...`);
-    await runAsPi(`${installDir}/node_modules/.bin/pi install ${ext}`, verbose);
+    await runAsPi(`${piBinaryPath} install ${ext}`, verbose);
     console.log(`Extension ${ext} installed.`);
   }
 }
@@ -611,6 +680,7 @@ async function main() {
     .option('-u, --update', `Wipe and reinstall Pi, to get the latest version`)
     .option('-e, --extensions', `Install recommended extensions after installing Pi`)
     .option('-a, --auth', `Configure provider authentication (creates auth.json for the '${AGENT_USER}' user)`)
+    .option('-n, --npm', `Install Pi using npm instead of tarball`)
     .option('-s, --ssh', `Copy current user's SSH keys to the '${AGENT_USER}' user for git SSH access (and add GitHub to known_hosts)`)
     .option('-p, --paranoid', `Never cache the sudo password; ask for it every time it is needed`)
     .option('--BURN, --destroy', `Destroy the '${AGENT_USER}' user, their home directory (${getPiHome()}), and the '${AGENT_GROUP_NAME}' group. Requires typing 'DELETE' to confirm.`);
@@ -631,16 +701,30 @@ async function main() {
     return;
   }
 
+  // wget is needed to download tarball
+  if (!opts.npm) {
+    await checkWget();
+  }
+
   await ensurePiUser();
 
   if (opts.update) {
     await wipeInstallation();
   }
 
-  await installAgent(opts.verbose);
+  const installDir = getPiInstallDir();
+  let piBinaryPath: string;
+  if (opts.npm) {
+    await installAgentUsingNpm(opts.verbose);
+    piBinaryPath = `${installDir}/node_modules/.bin/pi`;
+  }
+  else {
+    await installAgentFromTarball(opts.verbose);
+    piBinaryPath = `${installDir}/pi`;
+  }
 
   if (opts.extensions) {
-    await installExtensions(opts.verbose);
+    await installExtensions(piBinaryPath, opts.verbose);
   }
 
   if (opts.auth) {
@@ -652,7 +736,7 @@ async function main() {
   }
 
   await updatePath();
-  await createLauncherScript();
+  await createLauncherScript(piBinaryPath);
 
   const workDir = await setupWorkDir();
   console.log(`\nPi is ready to be launched with '${LAUNCHER_SCRIPT_FILENAME}' command.`);
