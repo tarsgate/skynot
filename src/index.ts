@@ -557,7 +557,7 @@ async function main() {
   const workDir = await setupWorkDir();
   console.log(`\nPi is ready to be launched with '${LAUNCHER_SCRIPT_FILENAME}' command.`);
   console.log(`\nRECOMMENDED next steps:`);
-  console.log(`1. Close this shell session and open a new one (for the group permissions to take effect)`);
+  console.log(`1. Log out of the system and log in again (for the group permissions to take effect)`);
   console.log(`2. \`cd\` into '${workDir}'`);
   console.log(`3. Clone the git repository where you will work on`);
   console.log(`4. \`cd\` into the cloned repository`);
