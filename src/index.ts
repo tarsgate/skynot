@@ -406,7 +406,7 @@ async function setupWorkDir(): Promise<string> {
   return workDir;
 }
 
-const RECOMMENDED_EXTENSIONS = ['npm:awto-pi-lot'];
+const RECOMMENDED_EXTENSIONS = ['npm:awto-pi-lot', 'https://github.com/earendil-works/pi-review'];
 
 async function installExtensions(verbose?: boolean): Promise<void> {
   const installDir = getPiInstallDir();
