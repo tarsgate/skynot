@@ -586,8 +586,12 @@ async function main() {
   program.parse(process.argv);
   const opts = program.opts();
 
-  // --destroy takes precedence over all other options
   if (opts.destroy) {
+    if (opts.update || opts.extensions || opts.auth || opts.ssh) {
+      console.error('Error: --destroy is not compatible with other flags (only --verbose)');
+      console.error('Please run --destroy alone (or with --verbose) and try again.');
+      process.exit(1);
+    }
     await destroyInstallation();
     return;
   }
