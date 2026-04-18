@@ -513,6 +513,60 @@ async function wipeInstallation(): Promise<void> {
   }
 }
 
+async function destroyInstallation(): Promise<void> {
+  const piHome = getPiHome();
+  const platform = os.platform();
+
+  console.log('\n=== DESTROY MODE ===');
+  console.log('This will permanently DELETE:');
+  console.log(`  - The '${AGENT_USER}' user`);
+  console.log(`  - All data in ${piHome} (the user\'s home directory)`);
+  console.log(`  - The '${AGENT_GROUP_NAME}' group`);
+  console.log('');
+
+  const confirmation = await askQuestion('Are you absolutely sure? Type "DELETE" to confirm: ');
+  if (confirmation.trim() !== 'DELETE') {
+    console.log('Aborted. Nothing was deleted.');
+    return;
+  }
+
+  const reason = 'required to destroy installation';
+
+  // Remove the user's home directory (all data)
+  console.log(`Removing ${piHome}...`);
+  await askSudoPasswordAndRun(`rm -rf ${piHome}`, reason);
+  console.log('User data deleted.');
+
+  // Delete the user
+  console.log(`Deleting user '${AGENT_USER}'...`);
+  if (platform === 'darwin') {
+    await askSudoPasswordAndRun(`sysadminctl -deleteUser ${AGENT_USER}`, reason);
+  } else {
+    await askSudoPasswordAndRun(`userdel ${AGENT_USER}`, reason);
+  }
+  console.log('User deleted.');
+
+  // Delete the group
+  console.log(`Deleting group '${AGENT_GROUP_NAME}'...`);
+  if (platform === 'darwin') {
+    await askSudoPasswordAndRun(`dscl . -delete /Groups/${AGENT_GROUP_NAME}`, reason);
+  } else {
+    await askSudoPasswordAndRun(`groupdel ${AGENT_GROUP_NAME}`, reason);
+  }
+  console.log('Group deleted.');
+
+  // Remove the launcher script
+  const launcherPath = path.join(os.homedir(), 'bin', LAUNCHER_SCRIPT_FILENAME);
+  if (fs.existsSync(launcherPath)) {
+    console.log(`Removing launcher script at ${launcherPath}...`);
+    fs.unlinkSync(launcherPath);
+    console.log('Launcher script removed.');
+  }
+
+  console.log('\n=== DESTROY COMPLETE ===');
+  console.log('All related resources have been removed.');
+}
+
 async function main() {
   if (os.platform() === 'win32') {
     throw new Error('Windows is not supported. Please run skynot on Linux or macOS.');
@@ -527,9 +581,16 @@ async function main() {
     .option('-u, --update', `Wipe and reinstall Pi, to get the latest version`)
     .option('-e, --extensions', `Install recommended extensions after installing Pi`)
     .option('-a, --auth', `Configure provider authentication (creates auth.json for the '${AGENT_USER}' user)`)
-    .option('-s, --ssh', `Copy current user's SSH keys to the '${AGENT_USER}' user for git SSH access (and add GitHub to known_hosts)`);
+    .option('-s, --ssh', `Copy current user's SSH keys to the '${AGENT_USER}' user for git SSH access (and add GitHub to known_hosts)`)
+    .option('--BURN, --destroy', `Destroy the '${AGENT_USER}' user, their home directory (${getPiHome()}), and the '${AGENT_GROUP_NAME}' group. Requires typing 'DELETE' to confirm.`);
   program.parse(process.argv);
   const opts = program.opts();
+
+  // --destroy takes precedence over all other options
+  if (opts.destroy) {
+    await destroyInstallation();
+    return;
+  }
 
   await ensurePiUser();
 
