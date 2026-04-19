@@ -536,6 +536,7 @@ async function destroyInstallation(): Promise<void> {
   console.log(`  - The '${AGENT_USER}' user`);
   console.log(`  - All data in ${piHome} (the user\'s home directory)`);
   console.log(`  - The '${AGENT_GROUP_NAME}' group`);
+  console.log(`  - The launcher script ~/bin/${LAUNCHER_SCRIPT_FILENAME}`);
   console.log('');
 
   const confirmation = await askQuestion('Are you absolutely sure? Type "DELETE" to confirm: ');
