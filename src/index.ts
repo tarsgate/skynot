@@ -11,7 +11,7 @@ const execAsync = promisify(exec);
 
 const AGENT_PACKAGE = '@mariozechner/pi-coding-agent';
 const AGENT_USER = 'pi';
-const LAUNCHER_SCRIPT_FILENAME = 'pi';
+const LAUNCHER_SCRIPT_FILENAME = 'spi';
 const AGENT_GROUP_NAME = "aiteam";
 
 function getShellRcFile(): string {
