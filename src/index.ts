@@ -166,6 +166,20 @@ async function userExists(username: string): Promise<boolean> {
   }
 }
 
+async function groupExists(groupName: string): Promise<boolean> {
+  try {
+    const platform = os.platform();
+    if (platform === 'darwin') {
+      await execAsync(`dscl . -read /Groups/${groupName}`);
+    } else {
+      await execAsync(`getent group ${groupName}`);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function ensurePiUser(): Promise<void> {
   const exists = await userExists(AGENT_USER);
   if (exists) {
@@ -513,6 +527,73 @@ async function wipeInstallation(): Promise<void> {
   }
 }
 
+async function destroyInstallation(): Promise<void> {
+  const piHome = getPiHome();
+  const platform = os.platform();
+
+  console.log('\n=== DESTROY MODE ===');
+  console.log('This will permanently DELETE:');
+  console.log(`  - The '${AGENT_USER}' user`);
+  console.log(`  - All data in ${piHome} (the user\'s home directory)`);
+  console.log(`  - The '${AGENT_GROUP_NAME}' group`);
+  console.log(`  - The launcher script ~/bin/${LAUNCHER_SCRIPT_FILENAME}`);
+  console.log('');
+
+  const confirmation = await askQuestion('Are you absolutely sure? Type "DELETE" to confirm: ');
+  if (confirmation.trim() !== 'DELETE') {
+    console.log('Aborted. Nothing was deleted.');
+    return;
+  }
+
+  const reason = 'required to destroy installation';
+
+  // Delete the user first (which also removes the home directory on Linux with -r, and on macOS sysadminctl removes the home)
+  console.log(`Deleting user '${AGENT_USER}'...`);
+  if (await userExists(AGENT_USER)) {
+    if (platform === 'darwin') {
+      // sysadminctl deletes the user and its home directory by default
+      await askSudoPasswordAndRun(`sysadminctl -deleteUser ${AGENT_USER}`, reason);
+    } else {
+      // -r flag removes the home directory
+      await askSudoPasswordAndRun(`userdel -r ${AGENT_USER}`, reason);
+    }
+    console.log(`User '${AGENT_USER}' deleted.`);
+  } else {
+    console.log(`User '${AGENT_USER}' does not exist, skipping (already deleted or not created yet).`);
+  }
+
+  // Ensure home directory is gone (some macOS configs may leave it)
+  if (fs.existsSync(piHome)) {
+    console.log(`Cleaning residual home directory ${piHome}...`);
+    await askSudoPasswordAndRun(`rm -rf ${piHome}`, reason);
+    console.log('Residual home directory removed.');
+  }
+
+  // Delete the group
+  console.log(`Deleting group '${AGENT_GROUP_NAME}'...`);
+  if (await groupExists(AGENT_GROUP_NAME)) {
+    if (platform === 'darwin') {
+      await askSudoPasswordAndRun(`dscl . -delete /Groups/${AGENT_GROUP_NAME}`, reason);
+    } else {
+      await askSudoPasswordAndRun(`groupdel ${AGENT_GROUP_NAME}`, reason);
+    }
+    console.log(`Group '${AGENT_GROUP_NAME}' deleted.`);
+  } else {
+    console.log(`Group '${AGENT_GROUP_NAME}' does not exist, skipping (already deleted or not created yet).`);
+  }
+
+  // Remove the launcher script
+  const launcherPath = path.join(os.homedir(), 'bin', LAUNCHER_SCRIPT_FILENAME);
+  if (fs.existsSync(launcherPath)) {
+    console.log(`Removing launcher script at ${launcherPath}...`);
+    fs.unlinkSync(launcherPath);
+    console.log('Launcher script removed.');
+  }
+
+  console.log('\n=== DESTROY COMPLETE ===');
+  console.log('All related resources have been removed.');
+}
+
 async function main() {
   if (os.platform() === 'win32') {
     throw new Error('Windows is not supported. Please run skynot on Linux or macOS.');
@@ -527,9 +608,20 @@ async function main() {
     .option('-u, --update', `Wipe and reinstall Pi, to get the latest version`)
     .option('-e, --extensions', `Install recommended extensions after installing Pi`)
     .option('-a, --auth', `Configure provider authentication (creates auth.json for the '${AGENT_USER}' user)`)
-    .option('-s, --ssh', `Copy current user's SSH keys to the '${AGENT_USER}' user for git SSH access (and add GitHub to known_hosts)`);
+    .option('-s, --ssh', `Copy current user's SSH keys to the '${AGENT_USER}' user for git SSH access (and add GitHub to known_hosts)`)
+    .option('--BURN, --destroy', `Destroy the '${AGENT_USER}' user, their home directory (${getPiHome()}), and the '${AGENT_GROUP_NAME}' group. Requires typing 'DELETE' to confirm.`);
   program.parse(process.argv);
   const opts = program.opts();
+
+  if (opts.destroy) {
+    if (opts.update || opts.extensions || opts.auth || opts.ssh) {
+      console.error('Error: --destroy is not compatible with other flags (only --verbose)');
+      console.error('Please run --destroy alone (or with --verbose) and try again.');
+      process.exit(1);
+    }
+    await destroyInstallation();
+    return;
+  }
 
   await ensurePiUser();
 

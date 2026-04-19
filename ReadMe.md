@@ -24,15 +24,16 @@ npx skynot [options]
 
 The following command‑line flags are available:
 
-| Flag         | Alias | Description                                                                       |
-|--------------|-------|-----------------------------------------------------------------------------------|
-|`--help`      | `-h`  | Show the help message with all available options.                                 |
-|`--auth`      | `-a`  | Ask about auth details (provider name and API key) to add it to launcher script.  |
-|`--extensions`| `-e`  | After installing Pi, also install recommended extensions.                         |
-|`--ssh`       | `-s`  | Copy SSH keys to the `pi` user for git+ssh (& add GitHub to `known_hosts`).       |
-|`--update`    | `-u`  | Wipe any previous existing install of Pi and reinstall, to get the latest version.|
-|`--verbose`   | `-v`  | Show more output from install commands (useful for debugging/low-bandwidth).      |
-|`--version`   | `-V`  | Output the version number.                                                        |
+| Flag         | Alias  | Description                                                                       |
+|--------------|--------|-----------------------------------------------------------------------------------|
+|`--help`      | `-h`   | Show the help message with all available options.                                 |
+|`--auth`      | `-a`   | Ask about auth details (provider name and API key) to add it to launcher script.  |
+|`--extensions`| `-e`   | After installing Pi, also install recommended extensions.                         |
+|`--ssh`       | `-s`   | Copy SSH keys to the `pi` user for git+ssh (& add GitHub to `known_hosts`).       |
+|`--update`    | `-u`   | Wipe any previous existing install of Pi and reinstall, to get the latest version.|
+|`--verbose`   | `-v`   | Show more output from install commands (useful for debugging/low-bandwidth).      |
+|`--version`   | `-V`   | Output the version number.                                                        |
+|`--destroy`   |`--BURN`| Delete the `pi` user, all its data (in `$HOME`), and the `aiteam` group.          |
 
 Please note, `-u` would technically not wipe or reinstall extensions, as they normally live in a different place (`.pi` subdir under `pi` user's $HOME, and/or $NPM_CONFIG_PREFIX dir).
 
