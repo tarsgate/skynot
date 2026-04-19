@@ -123,12 +123,15 @@ function runSudoWithPassword(command: string, password: string, asUser?: string,
 }
 
 // Cached sudo password so we only ask once
-let cachedSudoPassword: string | null = null;
+import { Option, Some, Nothing } from 'fp-sdk';
+
+// Cached sudo password using Option type; None means not cached yet
+let cachedSudoPassword: Option<string> = Nothing;
 
 async function askSudoPasswordAndRun(command: string, reason: string, asUser?: string, verbose?: boolean): Promise<void> {
   const MAX_SUDO_RETRIES = 3;
-  if (cachedSudoPassword) {
-    await runSudoWithPassword(command, cachedSudoPassword, asUser, verbose);
+  if (cachedSudoPassword instanceof Some) {
+    await runSudoWithPassword(command, cachedSudoPassword.value, asUser, verbose);
     return;
   }
   for (let attempt = 1; attempt <= MAX_SUDO_RETRIES; attempt++) {
@@ -144,7 +147,7 @@ async function askSudoPasswordAndRun(command: string, reason: string, asUser?: s
         throw new Error(`Failed after ${MAX_SUDO_RETRIES} attempts. Aborting.`);
       }
     }
-    cachedSudoPassword = password.trim();
+    cachedSudoPassword = new Some(password.trim());
 
     // Password is valid, now run the actual command
     await runSudoWithPassword(command, password.trim(), asUser, verbose);
