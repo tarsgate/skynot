@@ -166,6 +166,20 @@ async function userExists(username: string): Promise<boolean> {
   }
 }
 
+async function groupExists(groupName: string): Promise<boolean> {
+  try {
+    const platform = os.platform();
+    if (platform === 'darwin') {
+      await execAsync(`dscl . -read /Groups/${groupName}`);
+    } else {
+      await execAsync(`getent group ${groupName}`);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function ensurePiUser(): Promise<void> {
   const exists = await userExists(AGENT_USER);
   if (exists) {
@@ -534,14 +548,18 @@ async function destroyInstallation(): Promise<void> {
 
   // Delete the user first (which also removes the home directory on Linux with -r, and on macOS sysadminctl removes the home)
   console.log(`Deleting user '${AGENT_USER}'...`);
-  if (platform === 'darwin') {
-    // sysadminctl deletes the user and its home directory by default
-    await askSudoPasswordAndRun(`sysadminctl -deleteUser ${AGENT_USER}`, reason);
+  if (await userExists(AGENT_USER)) {
+    if (platform === 'darwin') {
+      // sysadminctl deletes the user and its home directory by default
+      await askSudoPasswordAndRun(`sysadminctl -deleteUser ${AGENT_USER}`, reason);
+    } else {
+      // -r flag removes the home directory
+      await askSudoPasswordAndRun(`userdel -r ${AGENT_USER}`, reason);
+    }
+    console.log(`User '${AGENT_USER}' deleted.`);
   } else {
-    // -r flag removes the home directory
-    await askSudoPasswordAndRun(`userdel -r ${AGENT_USER}`, reason);
+    console.log(`User '${AGENT_USER}' does not exist, skipping (already deleted or not created yet).`);
   }
-  console.log('User deleted (home directory removed).');
 
   // Ensure home directory is gone (some macOS configs may leave it)
   if (fs.existsSync(piHome)) {
@@ -552,12 +570,16 @@ async function destroyInstallation(): Promise<void> {
 
   // Delete the group
   console.log(`Deleting group '${AGENT_GROUP_NAME}'...`);
-  if (platform === 'darwin') {
-    await askSudoPasswordAndRun(`dscl . -delete /Groups/${AGENT_GROUP_NAME}`, reason);
+  if (await groupExists(AGENT_GROUP_NAME)) {
+    if (platform === 'darwin') {
+      await askSudoPasswordAndRun(`dscl . -delete /Groups/${AGENT_GROUP_NAME}`, reason);
+    } else {
+      await askSudoPasswordAndRun(`groupdel ${AGENT_GROUP_NAME}`, reason);
+    }
+    console.log(`Group '${AGENT_GROUP_NAME}' deleted.`);
   } else {
-    await askSudoPasswordAndRun(`groupdel ${AGENT_GROUP_NAME}`, reason);
+    console.log(`Group '${AGENT_GROUP_NAME}' does not exist, skipping (already deleted or not created yet).`);
   }
-  console.log('Group deleted.');
 
   // Remove the launcher script
   const launcherPath = path.join(os.homedir(), 'bin', LAUNCHER_SCRIPT_FILENAME);
