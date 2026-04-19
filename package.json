@@ -1,7 +1,7 @@
 {
   "name": "skynot",
-  "version": "0.0.2",
-  "description": "Quick NPX tool to set up a pi user and install the pi-coding-agent",
+  "version": "0.0.3",
+  "description": "Installer for pi-coding-agent embedded as a simple NPX tool to set up a user named `pi`, and download Pi inside its $HOME",
   "main": "dist/index.js",
   "bin": {
     "skynot": "dist/index.js"
@@ -25,12 +25,12 @@
   "license": "AGPL",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nblockchain/skynot.git"
+    "url": "git+https://github.com/tarsgate/skynot.git"
   },
   "bugs": {
-    "url": "https://github.com/nblockchain/skynot/issues"
+    "url": "https://github.com/tarsgate/skynot/issues"
   },
-  "homepage": "https://github.com/nblockchain/skynot#readme",
+  "homepage": "https://github.com/tarsgate/skynot#readme",
   "dependencies": {
     "commander": "^11.0.0"
   },
