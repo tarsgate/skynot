@@ -532,19 +532,23 @@ async function destroyInstallation(): Promise<void> {
 
   const reason = 'required to destroy installation';
 
-  // Remove the user's home directory (all data)
-  console.log(`Removing ${piHome}...`);
-  await askSudoPasswordAndRun(`rm -rf ${piHome}`, reason);
-  console.log('User data deleted.');
-
-  // Delete the user
+  // Delete the user first (which also removes the home directory on Linux with -r, and on macOS sysadminctl removes the home)
   console.log(`Deleting user '${AGENT_USER}'...`);
   if (platform === 'darwin') {
+    // sysadminctl deletes the user and its home directory by default
     await askSudoPasswordAndRun(`sysadminctl -deleteUser ${AGENT_USER}`, reason);
   } else {
-    await askSudoPasswordAndRun(`userdel ${AGENT_USER}`, reason);
+    // -r flag removes the home directory
+    await askSudoPasswordAndRun(`userdel -r ${AGENT_USER}`, reason);
   }
-  console.log('User deleted.');
+  console.log('User deleted (home directory removed).');
+
+  // Ensure home directory is gone (some macOS configs may leave it)
+  if (fs.existsSync(piHome)) {
+    console.log(`Cleaning residual home directory ${piHome}...`);
+    await askSudoPasswordAndRun(`rm -rf ${piHome}`, reason);
+    console.log('Residual home directory removed.');
+  }
 
   // Delete the group
   console.log(`Deleting group '${AGENT_GROUP_NAME}'...`);
