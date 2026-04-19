@@ -128,9 +128,12 @@ import { Option, Some, Nothing } from 'fp-sdk';
 // Cached sudo password using Option type; None means not cached yet
 let cachedSudoPassword: Option<string> = Nothing;
 
+// When true, never cache the sudo password — ask every time
+let paranoidMode = false;
+
 async function askSudoPasswordAndRun(command: string, reason: string, asUser?: string, verbose?: boolean): Promise<void> {
   const MAX_SUDO_RETRIES = 3;
-  if (cachedSudoPassword instanceof Some) {
+  if (!paranoidMode && cachedSudoPassword instanceof Some) {
     await runSudoWithPassword(command, cachedSudoPassword.value, asUser, verbose);
     return;
   }
@@ -147,7 +150,9 @@ async function askSudoPasswordAndRun(command: string, reason: string, asUser?: s
         throw new Error(`Failed after ${MAX_SUDO_RETRIES} attempts. Aborting.`);
       }
     }
-    cachedSudoPassword = new Some(password);
+    if (!paranoidMode) {
+      cachedSudoPassword = new Some(password);
+    }
 
     // Password is valid, now run the actual command
     await runSudoWithPassword(command, password, asUser, verbose);
@@ -615,12 +620,17 @@ async function main() {
     .option('-e, --extensions', `Install recommended extensions after installing Pi`)
     .option('-a, --auth', `Configure provider authentication (creates auth.json for the '${AGENT_USER}' user)`)
     .option('-s, --ssh', `Copy current user's SSH keys to the '${AGENT_USER}' user for git SSH access (and add GitHub to known_hosts)`)
+    .option('-p, --paranoid', `Never cache the sudo password; ask for it every time it is needed`)
     .option('--BURN, --destroy', `Destroy the '${AGENT_USER}' user, their home directory (${getPiHome()}), and the '${AGENT_GROUP_NAME}' group. Requires typing 'DELETE' to confirm.`);
   program.parse(process.argv);
   const opts = program.opts();
 
+  if (opts.paranoid) {
+    paranoidMode = true;
+  }
+
   if (opts.destroy) {
-    if (opts.update || opts.extensions || opts.auth || opts.ssh) {
+    if (opts.paranoid || opts.update || opts.extensions || opts.auth || opts.ssh) {
       console.error('Error: --destroy is not compatible with other flags (only --verbose)');
       console.error('Please run --destroy alone (or with --verbose) and try again.');
       process.exit(1);
