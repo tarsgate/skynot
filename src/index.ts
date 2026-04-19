@@ -5,6 +5,7 @@ import * as readline from 'readline';
 import { promisify } from 'util';
 import * as os from 'os';
 import { Command } from 'commander';
+import { Option, Some, Nothing } from 'fp-sdk';
 import pkg from '../package.json';
 
 const execAsync = promisify(exec);
@@ -13,6 +14,7 @@ const AGENT_PACKAGE = '@mariozechner/pi-coding-agent';
 const AGENT_USER = 'pi';
 const LAUNCHER_SCRIPT_FILENAME = 'pi';
 const AGENT_GROUP_NAME = "aiteam";
+
 
 function getShellRcFile(): string {
   const platform = os.platform();
@@ -123,19 +125,22 @@ function runSudoWithPassword(command: string, password: string, asUser?: string,
 }
 
 // Cached sudo password so we only ask once
-let cachedSudoPassword: string | null = null;
+let cachedSudoPassword: Option<string> = Nothing;
+
+// When true, never cache the sudo password — ask every time
+let paranoidMode = false;
 
 async function askSudoPasswordAndRun(command: string, reason: string, asUser?: string, verbose?: boolean): Promise<void> {
   const MAX_SUDO_RETRIES = 3;
-  if (cachedSudoPassword) {
-    await runSudoWithPassword(command, cachedSudoPassword, asUser, verbose);
+  if (!paranoidMode && cachedSudoPassword instanceof Some) {
+    await runSudoWithPassword(command, cachedSudoPassword.value, asUser, verbose);
     return;
   }
   for (let attempt = 1; attempt <= MAX_SUDO_RETRIES; attempt++) {
-    const password = await askQuestion(`Enter sudo password (${reason}): `, true);
+    const password = await askQuestion(`Enter sudo password (${reason}) [exact command: \`${command}\`]: `, true);
     try {
       // Validate the password with a trivial command first
-      await runSudoWithPassword('ls /', password.trim());
+      await runSudoWithPassword('ls /', password);
     } catch (e) {
       if (attempt < MAX_SUDO_RETRIES) {
         console.error('Incorrect password, please try again.');
@@ -144,10 +149,12 @@ async function askSudoPasswordAndRun(command: string, reason: string, asUser?: s
         throw new Error(`Failed after ${MAX_SUDO_RETRIES} attempts. Aborting.`);
       }
     }
-    cachedSudoPassword = password.trim();
+    if (!paranoidMode) {
+      cachedSudoPassword = new Some(password);
+    }
 
     // Password is valid, now run the actual command
-    await runSudoWithPassword(command, password.trim(), asUser, verbose);
+    await runSudoWithPassword(command, password, asUser, verbose);
     return;
   }
 }
@@ -496,23 +503,16 @@ async function copySshKeys(): Promise<void> {
 
   console.log(`Copying SSH keys to ${piSshDir}...`);
 
-  const privateKeyContent = fs.readFileSync(privateKey, 'utf-8');
-  const publicKeyContent = fs.readFileSync(publicKey, 'utf-8');
 
-  // Create .ssh dir, write keys, set proper ownership and permissions
+
+  const reason = 'required to copy SSH keys';
+
+  // Create .ssh dir with proper ownership and permissions
   await runAsPi(`mkdir -p ${piSshDir} && chmod 700 ${piSshDir}`);
 
-  // Write private key
-  await runAsPi(`cat > ${piSshDir}/id_rsa << 'SKYNOT_SSH_EOF'
-${privateKeyContent}
-SKYNOT_SSH_EOF
-chmod 600 ${piSshDir}/id_rsa`);
-
-  // Write public key
-  await runAsPi(`cat > ${piSshDir}/id_rsa.pub << 'SKYNOT_SSH_EOF'
-${publicKeyContent}
-SKYNOT_SSH_EOF
-chmod 644 ${piSshDir}/id_rsa.pub`);
+  // Copy keys as root (pi user can't read the source), then chown to pi
+  await askSudoPasswordAndRun(`cp ${privateKey} ${piSshDir}/id_rsa && chown ${AGENT_USER} ${piSshDir}/id_rsa && chmod 600 ${piSshDir}/id_rsa`, reason);
+  await askSudoPasswordAndRun(`cp ${publicKey} ${piSshDir}/id_rsa.pub && chown ${AGENT_USER} ${piSshDir}/id_rsa.pub && chmod 644 ${piSshDir}/id_rsa.pub`, reason);
 
   // Add GitHub's host key to known_hosts to avoid interactive prompt
   await runAsPi(`ssh-keyscan -t rsa github.com >> ${piSshDir}/known_hosts`);
@@ -612,14 +612,19 @@ async function main() {
     .option('-e, --extensions', `Install recommended extensions after installing Pi`)
     .option('-a, --auth', `Configure provider authentication (creates auth.json for the '${AGENT_USER}' user)`)
     .option('-s, --ssh', `Copy current user's SSH keys to the '${AGENT_USER}' user for git SSH access (and add GitHub to known_hosts)`)
+    .option('-p, --paranoid', `Never cache the sudo password; ask for it every time it is needed`)
     .option('--BURN, --destroy', `Destroy the '${AGENT_USER}' user, their home directory (${getPiHome()}), and the '${AGENT_GROUP_NAME}' group. Requires typing 'DELETE' to confirm.`);
   program.parse(process.argv);
   const opts = program.opts();
 
+  if (opts.paranoid) {
+    paranoidMode = true;
+  }
+
   if (opts.destroy) {
     if (opts.update || opts.extensions || opts.auth || opts.ssh) {
-      console.error('Error: --destroy is not compatible with other flags (only --verbose)');
-      console.error('Please run --destroy alone (or with --verbose) and try again.');
+      console.error('Error: --destroy is only compatible with --verbose and/or --paranoid flags)');
+      console.error('Please try again with a different flags combination.');
       process.exit(1);
     }
     await destroyInstallation();
