@@ -630,7 +630,7 @@ async function main() {
 
   let extensions: Option<string[]>;
   if (opts.extensions) {
-    const names = opts.extensions.filter((v): v is string => v !== true);
+    const names = opts.extensions.filter((entry: string | true): entry is string => entry !== true);
     // If any bare -e (true) was used and no named extensions, it's Some([])
     // If named extensions were given, include them regardless of bare -e presence
     extensions = new Some(names);
