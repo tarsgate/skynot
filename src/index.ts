@@ -432,11 +432,18 @@ async function setupWorkDir(): Promise<string> {
 
 const RECOMMENDED_EXTENSIONS = ['npm:awto-pi-lot'];
 
-async function installExtensions(verbose?: boolean): Promise<void> {
+async function installExtensions(extensions: string[], verbose?: boolean): Promise<void> {
   const installDir = getPiInstallDir();
-  for (const ext of RECOMMENDED_EXTENSIONS) {
-    console.log(`Installing recommended extension: ${ext}...`);
-    await runAsPi(`${installDir}/node_modules/.bin/pi install ${ext}`, verbose);
+
+  // Some([]) means bare -e: install recommended; Some([...names]) means specific extensions
+  const toInstall = extensions.length === 0 ? RECOMMENDED_EXTENSIONS : extensions;
+
+  // Deduplicate while preserving order
+  const uniqueListOfExtsToInstall = [...new Set(toInstall)];
+
+  for (const extension of uniqueListOfExtsToInstall) {
+    console.log(`Installing extension: ${extension}...`);
+    await runAsPi(`${installDir}/node_modules/.bin/pi install ${extension}`, verbose);
     console.log(`Extension ${ext} installed.`);
   }
 }
@@ -609,7 +616,7 @@ async function main() {
     .helpOption('-h, --help', 'Show this help message')
     .option('-v, --verbose', 'Show detailed output from install commands (useful for slow connections or debugging)')
     .option('-u, --update', `Wipe and reinstall Pi, to get the latest version`)
-    .option('-e, --extensions', `Install recommended extensions after installing Pi`)
+    .option('-e, --extensions [name]', `Install an extension by name (e.g. -e npm:awto-pi-lot). Can be used multiple times. If used without a name, installs recommended extensions.`, (val: string | true, prev: (string | true)[]) => prev.concat([val]), [] as (string | true)[])
     .option('-a, --auth', `Configure provider authentication (creates auth.json for the '${AGENT_USER}' user)`)
     .option('-s, --ssh', `Copy current user's SSH keys to the '${AGENT_USER}' user for git SSH access (and add GitHub to known_hosts)`)
     .option('-p, --paranoid', `Never cache the sudo password; ask for it every time it is needed`)
@@ -621,8 +628,18 @@ async function main() {
     paranoidMode = true;
   }
 
+  let extensions: Option<string[]>;
+  if (opts.extensions) {
+    const names = opts.extensions.filter((v): v is string => v !== true);
+    // If any bare -e (true) was used and no named extensions, it's Some([])
+    // If named extensions were given, include them regardless of bare -e presence
+    extensions = new Some(names);
+  } else {
+    extensions = Nothing;
+  }
+
   if (opts.destroy) {
-    if (opts.update || opts.extensions || opts.auth || opts.ssh) {
+    if (opts.update || (extensions instanceof Some) || opts.auth || opts.ssh) {
       console.error('Error: --destroy is only compatible with --verbose and/or --paranoid flags)');
       console.error('Please try again with a different flags combination.');
       process.exit(1);
@@ -639,8 +656,8 @@ async function main() {
 
   await installAgent(opts.verbose);
 
-  if (opts.extensions) {
-    await installExtensions(opts.verbose);
+  if (extensions instanceof Some) {
+    await installExtensions(extensions.value, opts.verbose);
   }
 
   if (opts.auth) {

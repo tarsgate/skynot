@@ -40,7 +40,9 @@ The following command‑line flags are available:
 |--------------|--------|-----------------------------------------------------------------------------------|
 |`--help`      | `-h`   | Show the help message with all available options.                                 |
 |`--auth`      | `-a`   | Ask about auth details (provider name and API key) to add it to launcher script.  |
-|`--extensions`| `-e`   | After installing Pi, also install recommended extensions.                         |
+|`--extensions`| `-e`   | Perform extension install; this flag can receive a name of the extension.         |
+|                       | NOTE: - for installing many extensions, use multiple -e flags                     |
+|                       | - if empty `-e` is used, skynot will install its recommended list of extensions.  |
 |`--paranoid`  | `-p`   | Never cache the sudo password; ask for it every time it is needed.                |
 |`--ssh`       | `-s`   | Copy SSH keys to the `pi` user for git+ssh (& add GitHub to `known_hosts`).       |
 |`--update`    | `-u`   | Wipe any previous existing install of Pi and reinstall, to get the latest version.|
