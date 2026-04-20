@@ -444,7 +444,7 @@ async function installExtensions(extensions: string[], verbose?: boolean): Promi
   for (const extension of uniqueListOfExtsToInstall) {
     console.log(`Installing extension: ${extension}...`);
     await runAsPi(`${installDir}/node_modules/.bin/pi install ${extension}`, verbose);
-    console.log(`Extension ${ext} installed.`);
+    console.log(`Extension ${extension} installed.`);
   }
 }
 
@@ -616,7 +616,7 @@ async function main() {
     .helpOption('-h, --help', 'Show this help message')
     .option('-v, --verbose', 'Show detailed output from install commands (useful for slow connections or debugging)')
     .option('-u, --update', `Wipe and reinstall Pi, to get the latest version`)
-    .option('-e, --extensions [name]', `Install an extension by name (e.g. -e npm:awto-pi-lot). Can be used multiple times. If used without a name, installs recommended extensions.`, (val: string | true, prev: (string | true)[]) => prev.concat([val]), [] as (string | true)[])
+    .option('-e, --extension [name], --extensions', `Install an extension by name (e.g. -e npm:awto-pi-lot). Can be used multiple times. If used without a name, installs recommended extensions.`, (val: string | true, prev: (string | true)[]) => prev.concat([val]), [] as (string | true)[])
     .option('-a, --auth', `Configure provider authentication (creates auth.json for the '${AGENT_USER}' user)`)
     .option('-s, --ssh', `Copy current user's SSH keys to the '${AGENT_USER}' user for git SSH access (and add GitHub to known_hosts)`)
     .option('-p, --paranoid', `Never cache the sudo password; ask for it every time it is needed`)
