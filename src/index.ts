@@ -423,8 +423,9 @@ if [ \${#EXPOSED_DIRS[@]} -gt 0 ]; then
   echo ""
 fi
 
+FULL_SUDO_CMD="export npm_config_prefix=$AGENT_USER_HOME/.npm-global && cd $CURRENT_DIR && ${piBinaryPath} $@"
 echo "Launching Pi with ${AGENT_USER} user (sudo is required to impersonate '${AGENT_USER}' user)..."
-exec sudo -i -u ${AGENT_USER} bash -c "export npm_config_prefix=$AGENT_USER_HOME/.npm-global && cd $CURRENT_DIR && ${piBinaryPath}"
+exec sudo -i -u ${AGENT_USER} bash -c "$FULL_SUDO_CMD"
 `;
   fs.writeFileSync(scriptPath, scriptContent, { mode: 0o755 });
   console.log('Launcher script created.');
