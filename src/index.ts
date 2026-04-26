@@ -261,6 +261,17 @@ async function ensureAgentUserExists(): Promise<void> {
   console.log(`User "${AGENT_USER}" created.`);
 }
 
+// Add a sudoers file that allows the current user to run commands as the '${AGENT_USER}' user without a password.
+async function addSudoersEntry(): Promise<void> {
+  const currentUser = os.userInfo().username;
+  const sudoersPath = `/etc/sudoers.d/pi-${AGENT_USER}`;
+  const line = `${currentUser} ALL=( ${AGENT_USER} ) NOPASSWD: ALL`;
+  // Create or overwrite the sudoers file and set proper permissions (440)
+  const cmd = `echo '${line}' | tee ${sudoersPath} && chmod 440 ${sudoersPath}`;
+  await askSudoPasswordAndRun(cmd, `required to add sudoers entry for ${currentUser} to run as ${AGENT_USER} without password`);
+  console.log(`Sudoers entry added for ${currentUser} to run as ${AGENT_USER} without password.`);
+}
+
 async function installAgentUsingNpm(verbose?: boolean): Promise<void> {
   const installDir = getPiInstallDir();
   const [scope, name] = AGENT_PACKAGE.split('/');
@@ -738,6 +749,8 @@ async function main() {
   }
 
   await ensureAgentUserExists();
+  // Ensure the current user can switch to the agent user without a password
+  await addSudoersEntry();
 
   if (opts.update) {
     await wipeInstallation();
