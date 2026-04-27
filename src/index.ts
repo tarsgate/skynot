@@ -747,7 +747,7 @@ async function main() {
     .helpOption('-h, --help', 'Show this help message')
     .option('-v, --verbose', 'Show detailed output from install commands (useful for slow connections or debugging)')
     .option('-u, --update', `Wipe and reinstall Pi, to get the latest version`)
-    .option('-e, --extensions', `Install recommended extensions after installing Pi`)
+    .option('-e, --extensions', `DEPRECATED: This flag installs recommended extensions after installing Pi; rather use \`${LAUNCHER_SCRIPT_FILENAME} install <extension>\` instead.`)
     .option('-a, --auth', `Configure provider authentication (creates auth.json for the '${AGENT_USER}' user)`)
     .option('-n, --npm', `Install Pi using npm instead of tarball`)
     .option('-s, --ssh', `Copy current user's SSH keys to the '${AGENT_USER}' user for git SSH access (and add GitHub to known_hosts)`)
