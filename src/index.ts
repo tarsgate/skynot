@@ -249,12 +249,12 @@ async function ensureAgentUserExists(): Promise<void> {
   const platform = os.platform();
   if (platform === 'darwin') {
     await askSudoPasswordAndRun(
-      `sysadminctl -addUser ${AGENT_USER} -home ${agentUserHome} -shell /bin/zsh && createhomedir -c -u ${AGENT_USER} 2>/dev/null; mkdir -p ${agentUserHome} && chown ${AGENT_USER}:staff ${agentUserHome}`,
+      `sysadminctl -addUser ${AGENT_USER} -home ${agentUserHome} -shell /bin/zsh && createhomedir -c -u ${AGENT_USER} 2>/dev/null; mkdir -p ${agentUserHome} && chown ${AGENT_USER}:${AGENT_GROUP_NAME} ${agentUserHome}`,
       'required to create user',
     );
   } else {
     await askSudoPasswordAndRun(
-      `useradd -m -s /bin/bash ${AGENT_USER}`,
+      `useradd -m -s /bin/bash -g ${AGENT_GROUP_NAME} ${AGENT_USER}`,
       'required to create user',
     );
   }
@@ -486,50 +486,77 @@ async function createMacOsGroup(sudoReason: string, freeGroupIdFindingCount: num
   }
 }
 
+async function ensureAgentGroupExists(): Promise<void> {
+  const exists = await groupExists(AGENT_GROUP_NAME);
+  if (exists) {
+    console.log(`Group "${AGENT_GROUP_NAME}" already exists.`);
+    return;
+  }
+  console.log(`Creating group "${AGENT_GROUP_NAME}"...`);
+  const platform = os.platform();
+  const reason = `required to create ${AGENT_GROUP_NAME} group`;
+  if (platform === 'darwin') {
+    await createMacOsGroup(reason, 0);
+  } else {
+    await askSudoPasswordAndRun(`groupadd ${AGENT_GROUP_NAME}`, reason);
+    console.log(`Group "${AGENT_GROUP_NAME}" created.`);
+  }
+}
+
+async function ensureUserInGroup(user: string): Promise<void> {
+  const platform = os.platform();
+  try {
+    const { stdout } = await execAsync(`id -nG ${user}`);
+    if (stdout.split(/\s+/).includes(AGENT_GROUP_NAME)) {
+      console.log(`User "${user}" is already in group "${AGENT_GROUP_NAME}".`);
+      return;
+    }
+  } catch {
+    // user might not exist yet or id failed, try to add anyway
+  }
+  console.log(`Adding user "${user}" to group "${AGENT_GROUP_NAME}"...`);
+  if (platform === 'darwin') {
+    await askSudoPasswordAndRun(`dseditgroup -o edit -a ${user} -t user ${AGENT_GROUP_NAME}`, `required to add ${user} to ${AGENT_GROUP_NAME} group`);
+  } else {
+    await askSudoPasswordAndRun(`usermod -aG ${AGENT_GROUP_NAME} ${user}`, `required to add ${user} to ${AGENT_GROUP_NAME} group`);
+  }
+  console.log(`User "${user}" added to group "${AGENT_GROUP_NAME}".`);
+}
+
+async function ensureExclusiveGroupMembership(user: string): Promise<void> {
+  const platform = os.platform();
+  try {
+    const { stdout } = await execAsync(`id -nG ${user}`);
+    const groups = stdout.trim().split(/\s+/).filter(g => g !== AGENT_GROUP_NAME);
+    if (groups.length === 0) {
+      console.log(`User "${user}" already belongs exclusively to group "${AGENT_GROUP_NAME}".`);
+      return;
+    }
+    console.log(`Removing user "${user}" from extra groups: ${groups.join(', ')}...`);
+    if (platform === 'darwin') {
+      // macOS: remove from each extra group individually and set primary group
+      for (const group of groups) {
+        try {
+          await askSudoPasswordAndRun(`dseditgroup -o edit -d ${user} -t user ${group}`, `required to remove ${user} from group ${group}`);
+        } catch {
+          // Group may not exist in directory services (e.g. implicit primary group), skip
+        }
+      }
+      // Set primary group to AGENT_GROUP_NAME
+      await askSudoPasswordAndRun(`dscl . -create /Users/${user} PrimaryGroupID $(dscl . -read /Groups/${AGENT_GROUP_NAME} PrimaryGroupID | awk '{print $2}')`, `required to set primary group for ${user}`);
+    } else {
+      // Linux: set primary and supplementary groups to only AGENT_GROUP_NAME
+      await askSudoPasswordAndRun(`usermod -g ${AGENT_GROUP_NAME} -G ${AGENT_GROUP_NAME} ${user}`, `required to set exclusive group membership for ${user}`);
+    }
+    console.log(`User "${user}" now belongs exclusively to group "${AGENT_GROUP_NAME}".`);
+  } catch (err) {
+    console.error(`Warning: could not verify/set exclusive group membership for "${user}": ${err}`);
+  }
+}
+
 async function setupWorkDir(): Promise<string> {
   const agentUserHome = getAgentUserHome();
   const workDir = path.join(agentUserHome, 'Work');
-  const currentUser = os.userInfo().username;
-  const platform = os.platform();
-
-  // Create group if it doesn't exist
-  try {
-    if (platform === 'darwin') {
-      await execAsync(`dscl . -read /Groups/${AGENT_GROUP_NAME}`);
-    } else {
-      await execAsync(`getent group ${AGENT_GROUP_NAME}`);
-    }
-    console.log(`Group "${AGENT_GROUP_NAME}" already exists.`);
-  } catch {
-    console.log(`Creating group "${AGENT_GROUP_NAME}"...`);
-    const reason = `required to create ${AGENT_GROUP_NAME} group`;
-    if (platform === 'darwin') {
-      await createMacOsGroup(reason, 0);
-    } else {
-      await askSudoPasswordAndRun(`groupadd ${AGENT_GROUP_NAME}`, reason);
-      console.log(`Group "${AGENT_GROUP_NAME}" created.`);
-    }
-  }
-
-  // Add users to AI group
-  for (const user of [AGENT_USER, currentUser]) {
-    try {
-      const { stdout } = await execAsync(`id -nG ${user}`);
-      if (stdout.split(/\s+/).includes(AGENT_GROUP_NAME)) {
-        console.log(`User "${user}" is already in group "${AGENT_GROUP_NAME}".`);
-        continue;
-      }
-    } catch {
-      // user might not exist yet or id failed, try to add anyway
-    }
-    console.log(`Adding user "${user}" to group "${AGENT_GROUP_NAME}"...`);
-    if (platform === 'darwin') {
-      await askSudoPasswordAndRun(`dseditgroup -o edit -a ${user} -t user ${AGENT_GROUP_NAME}`, `required to add ${user} to ${AGENT_GROUP_NAME} group`);
-    } else {
-      await askSudoPasswordAndRun(`usermod -aG ${AGENT_GROUP_NAME} ${user}`, `required to add ${user} to ${AGENT_GROUP_NAME} group`);
-    }
-    console.log(`User "${user}" added to group "${AGENT_GROUP_NAME}".`);
-  }
 
   console.log(`Setting up group permissions...`);
   await askSudoPasswordAndRun(`chown ${AGENT_USER}:${AGENT_GROUP_NAME} ${agentUserHome} && chmod g+rwx ${agentUserHome}`, `required to set ${AGENT_USER}'s home to belong to ${AGENT_GROUP_NAME} group`);
@@ -748,7 +775,15 @@ async function main() {
     await checkWget();
   }
 
+  await ensureAgentGroupExists();
   await ensureAgentUserExists();
+
+  // Ensure both users belong to the agent group, and agent user belongs exclusively to it
+  const currentUser = os.userInfo().username;
+  await ensureUserInGroup(AGENT_USER);
+  await ensureUserInGroup(currentUser);
+  await ensureExclusiveGroupMembership(AGENT_USER);
+
   // Ensure the current user can switch to the agent user without a password
   await addSudoersEntry();
 
