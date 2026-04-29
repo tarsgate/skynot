@@ -15,6 +15,7 @@ const AGENT_GITHUB_REPO = "badlogic/pi-mono";
 const AGENT_USER = 'aidev';
 const LAUNCHER_SCRIPT_FILENAME = 'spi';
 const AGENT_GROUP_NAME = "aiteam";
+const DEFAULT_UMASK = '007';
 
 type RunProcessOptions = {
   cwd?: string;
@@ -211,7 +212,7 @@ async function runAsAgentUser(command: string, verbose?: boolean): Promise<void>
   const agentUserHome = getAgentUserHome();
   // Set HOME and cd to the agent user's home to avoid inheriting the current user's
   // working directory (which the agent user can't access) and npm cache.
-  const wrappedCommand = `export HOME=${agentUserHome} && export npm_config_prefix=${agentUserHome}/.npm-global && cd ${agentUserHome} && ${command}`;
+  const wrappedCommand = `export HOME=${agentUserHome} && export npm_config_prefix=${agentUserHome}/.npm-global && umask ${DEFAULT_UMASK} && cd ${agentUserHome} && ${command}`;
   await askSudoPasswordAndRun(wrappedCommand, `required to run as '${AGENT_USER}' user`, AGENT_USER, verbose);
 }
 
@@ -361,6 +362,27 @@ async function updatePath(): Promise<void> {
   console.log(`${rcFile} updated.`);
 }
 
+async function updateUmask(): Promise<void> {
+  const rcFile = getShellRcFile();
+  const agentUserHome = getAgentUserHome();
+  const line = `umask ${DEFAULT_UMASK}`;
+  const rcPath = `${agentUserHome}/${rcFile}`;
+
+  // Check locally if the line is already present
+  if (fs.existsSync(rcPath)) {
+    const content = fs.readFileSync(rcPath, 'utf-8');
+    if (content.includes(line)) {
+      console.log(`${AGENT_USER}'s umask already configured in ${rcFile}, skipping.`);
+      return;
+    }
+  }
+
+  console.log(`Setting umask ${DEFAULT_UMASK} in ${AGENT_USER}'s ${rcFile}...`);
+  const checkCmd = `grep -Fx '${line}' ${rcPath} 2>/dev/null || echo '${line}' >> ${rcPath}`;
+  await runAsAgentUser(checkCmd);
+  console.log(`${rcFile} updated with umask.`);
+}
+
 async function createLauncherScript(piBinaryPath: string): Promise<void> {
   const currentUserHome = os.homedir();
   const binDir = path.join(currentUserHome, 'bin');
@@ -434,7 +456,7 @@ if [ \${#EXPOSED_DIRS[@]} -gt 0 ]; then
   echo ""
 fi
 
-FULL_SUDO_CMD="export npm_config_prefix=$AGENT_USER_HOME/.npm-global && cd $CURRENT_DIR && ${piBinaryPath} $@"
+FULL_SUDO_CMD="export npm_config_prefix=$AGENT_USER_HOME/.npm-global && umask ${DEFAULT_UMASK} && cd $CURRENT_DIR && ${piBinaryPath} $@"
 echo "Launching Pi with ${AGENT_USER} user (sudo is required to impersonate '${AGENT_USER}' user)..."
 exec sudo -i -u ${AGENT_USER} bash -c "$FULL_SUDO_CMD"
 `;
@@ -815,6 +837,7 @@ async function main() {
   }
 
   await updatePath();
+  await updateUmask();
   await createLauncherScript(piBinaryPath);
 
   const workDir = await setupWorkDir();
