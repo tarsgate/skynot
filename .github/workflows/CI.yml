@@ -21,18 +21,19 @@ concurrency:
 jobs:
   build-check:
     runs-on: ubuntu-latest
+    container:
+      image: 'ubuntu:26.04'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
       - name: Update system dependencies
         run: |
-          sudo apt-get update
+          apt update --yes
+
+      - name: Install system dependencies
+        run: |
+          apt install --yes npm
 
       - name: Install dependencies
         run: npm install
