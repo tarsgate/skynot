@@ -368,7 +368,7 @@ async function installAgentFromTarball(verbose?: boolean): Promise<void> {
 
     console.log(`Installing ${tarballName} into ${piInstallDir}...`);
 
-    const releasesUrl = `https://api.github.com/repos/${AGENT_GITHUB_REPO}/releases/latest`;
+    const releasesUrl = `https://api.github.com/repos/${AGENT_GITHUB_REPO}/releases/tags/v0.70.5`;
     const response = await fetch(releasesUrl);
     if (!response.ok) {
         throw new Error(`Error when getting releases: ${response.status}`);
