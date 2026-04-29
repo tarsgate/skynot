@@ -24,19 +24,31 @@ jobs:
     container:
       image: 'ubuntu:26.04'
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Update system dependencies
         run: |
           apt update --yes
 
       - name: Install system dependencies
         run: |
-          apt install --yes npm
+          apt install --yes npm git
+
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Run git+githubCI workaround
+        run: |
+          # We need this step so we can change the files using `npx prettier --write` in the format step, see https://github.com/actions/checkout/issues/363
+          # Otherwise we get 'warning: Not a git repository. Use --no-index to compare two paths outside a working tree' in next step when trying to git diff
+          git config --global --add safe.directory $PWD
 
       - name: Install dependencies
         run: npm install
 
       - name: Build
         run: npm run build
+
+      - name: Format check
+        run: |
+          npm run format
+          git diff --exit-code || (echo "Formatting did not match (see above diff), please run 'npm run format'" >&2 && exit 1)
+

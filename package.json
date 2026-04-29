@@ -9,6 +9,7 @@
   "scripts": {
     "build": "npm install && npx tsc",
     "prepublishOnly": "npm run build",
+    "format": "npm install && npx --no-install prettier --quote-props=consistent --write ./src/**/*.ts",
     "exec": "npm run build && node dist/index.js"
   },
   "keywords": [
@@ -36,6 +37,7 @@
     "commander": "^11.0.0"
   },
   "devDependencies": {
+    "prettier": "2.8.3",
     "@types/node": "^20.12.0",
     "typescript": "^5.3.3"
   }
