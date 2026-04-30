@@ -23,6 +23,13 @@ const LAUNCHER_SCRIPT_FILENAME = "spi";
 const AGENT_GROUP_NAME = "aiteam";
 const DEFAULT_UMASK = "007";
 
+type GithubApiReleasesJson = {
+    assets: {
+        name: string;
+        browser_download_url: string;
+    }[];
+};
+
 type RunProcessOptions = {
     cwd?: string;
     onSpawn?: (child: ChildProcessWithoutNullStreams) => void;
@@ -346,7 +353,7 @@ async function installAgentUsingNpm(verbose?: boolean): Promise<void> {
 async function checkWget(): Promise<void> {
     try {
         await execAsync("which wget");
-    } catch (err: any) {
+    } catch (err) {
         console.error(
             "Error: wget not found. Either install wget or use --npm flag."
         );
@@ -373,18 +380,18 @@ async function installAgentFromTarball(verbose?: boolean): Promise<void> {
     if (!response.ok) {
         throw new Error(`Error when getting releases: ${response.status}`);
     }
-    const releasesJson = await response.json();
+    const releasesJson = (await response.json()) as GithubApiReleasesJson;
 
-    const assets = releasesJson["assets"] as Record<string, any>[];
+    const assets = releasesJson.assets;
     const asset = OptionHelpers.ofObj(
-        assets.find((asset) => asset["name"] === tarballName)
+        assets.find((asset) => asset.name === tarballName)
     );
     if (asset instanceof None) {
         throw new Error(
             `Asset with tarball ${tarballName} not found in the list of release assets.`
         );
     }
-    const assetUrl = asset.value["browser_download_url"];
+    const assetUrl = asset.value.browser_download_url;
 
     const tarballPath = path.join("/var/tmp", tarballName);
     // wget shows progeress in stderr
