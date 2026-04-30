@@ -714,7 +714,10 @@ async function setupWorkDir(): Promise<string> {
     return workDir;
 }
 
-const RECOMMENDED_EXTENSIONS = ["npm:awto-pi-lot"];
+const RECOMMENDED_EXTENSIONS = [
+    "https://github.com/tarsgate/awto-pi-lot",
+    "npm:pi-wtf",
+];
 
 async function installExtensions(
     piBinaryPath: string,
