@@ -43,22 +43,22 @@ function runCommand(
         const spawnOptions: SpawnOptionsWithoutStdio = {
             stdio: ["pipe", "pipe", "pipe"],
         };
-        const cwd = OptionHelpers.OfObj(options.cwd);
+        const cwd = OptionHelpers.ofObj(options.cwd);
         if (cwd instanceof Some) {
             spawnOptions.cwd = cwd.value;
         }
         const child = spawn(command, args, spawnOptions);
 
-        const redirectStdOut = OptionHelpers.OfObj(options.verboseStdOut);
+        const redirectStdOut = OptionHelpers.ofObj(options.verboseStdOut);
         if (redirectStdOut instanceof Some && redirectStdOut.value) {
             child.stdout.pipe(process.stdout);
         }
-        const redirectStdErr = OptionHelpers.OfObj(options.verboseStdErr);
+        const redirectStdErr = OptionHelpers.ofObj(options.verboseStdErr);
         if (redirectStdErr instanceof Some && redirectStdErr.value) {
             child.stderr.pipe(process.stderr);
         }
 
-        const onSpawn = OptionHelpers.OfObj(options.onSpawn);
+        const onSpawn = OptionHelpers.ofObj(options.onSpawn);
         if (onSpawn instanceof Some) {
             onSpawn.value(child);
         }
@@ -71,7 +71,7 @@ function runCommand(
             if (code === 0) {
                 resolve();
             } else {
-                const onError = OptionHelpers.OfObj(options.onError);
+                const onError = OptionHelpers.ofObj(options.onError);
                 if (onError instanceof None) {
                     reject(
                         new Error(
@@ -376,7 +376,7 @@ async function installAgentFromTarball(verbose?: boolean): Promise<void> {
     const releasesJson = await response.json();
 
     const assets = releasesJson["assets"] as Record<string, any>[];
-    const asset = OptionHelpers.OfObj(
+    const asset = OptionHelpers.ofObj(
         assets.find((asset) => asset["name"] === tarballName)
     );
     if (asset instanceof None) {
