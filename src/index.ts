@@ -831,6 +831,58 @@ async function copySshKeys(): Promise<void> {
     );
 }
 
+async function configureGit(identity: Option<string>): Promise<void> {
+    let name: Option<string> = Nothing;
+    let email: Option<string> = Nothing;
+
+    if (identity instanceof Some) {
+        const match = identity.value.match(/^(.*) <([^>]+)>$/);
+        if (match) {
+            name = new Some(match[1].trim());
+            email = new Some(match[2].trim());
+        } else {
+            console.error(
+                'Invalid format for --git argument. Expected: "Name Surname <email@example.com>"'
+            );
+            process.exit(1);
+        }
+    } else {
+        // No identity supplied, copy from current user's git config
+        try {
+            const { stdout: nameStdout } = await execAsync(
+                "git config --global user.name"
+            );
+            const { stdout: emailStdout } = await execAsync(
+                "git config --global user.email"
+            );
+            name = OptionHelpers.ofObj(nameStdout.trim() || undefined);
+            email = OptionHelpers.ofObj(emailStdout.trim() || undefined);
+            if (name instanceof None || email instanceof None) {
+                console.error(
+                    "Current user's git config does not have user.name or user.email set."
+                );
+                process.exit(1);
+            }
+        } catch (e) {
+            console.error("Failed to read current user's git config:", e);
+            process.exit(1);
+        }
+    }
+
+    if (name instanceof None || email instanceof None) {
+        console.error("Could not determine git name and email.");
+        process.exit(1);
+    }
+
+    // Apply to the agent user
+    await runAsAgentUser(
+        `git config --global user.name "${name.value}" && git config --global user.email "${email.value}"`
+    );
+    console.log(
+        `Git config for '${AGENT_USER}' set to ${name.value} <${email.value}>`
+    );
+}
+
 async function wipeInstallation(): Promise<void> {
     const installDir = getPiInstallDir();
     if (fs.existsSync(installDir)) {
@@ -961,6 +1013,10 @@ async function main() {
             `Copy current user's SSH keys to the '${AGENT_USER}' user for git SSH access (and add GitHub to known_hosts)`
         )
         .option(
+            "-g, --git [identity]",
+            `Configure git user.name and user.email for the '${AGENT_USER}' user. If no argument is given, copies from current user's git config. If an argument is supplied (e.g. "Name Surname <user@example.com>"), uses that instead.`
+        )
+        .option(
             "-p, --paranoid",
             `Never cache the sudo password; ask for it every time it is needed`
         )
@@ -1030,6 +1086,21 @@ async function main() {
 
     if (opts.ssh) {
         await copySshKeys();
+    }
+
+    if (opts.git) {
+        let identity: Option<string>;
+        if (opts.git === true) {
+            identity = Nothing;
+        } else if (typeof opts.git === "string") {
+            identity = new Some(opts.git);
+        } else {
+            console.error(
+                'Invalid --git argument. Expected a string in the form "Name Surname <email@example.com>" or no argument at all.'
+            );
+            process.exit(1);
+        }
+        await configureGit(identity);
     }
 
     await updatePath();
