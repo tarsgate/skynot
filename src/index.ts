@@ -375,7 +375,7 @@ async function installAgentFromTarball(verbose?: boolean): Promise<void> {
 
     console.log(`Installing ${tarballName} into ${piInstallDir}...`);
 
-    const releasesUrl = `https://api.github.com/repos/${AGENT_GITHUB_REPO}/releases/tags/v0.70.5`;
+    const releasesUrl = `https://api.github.com/repos/${AGENT_GITHUB_REPO}/releases/latest`;
     const response = await fetch(releasesUrl);
     if (!response.ok) {
         throw new Error(`Error when getting releases: ${response.status}`);
@@ -722,7 +722,9 @@ async function setupWorkDir(): Promise<string> {
 }
 
 const RECOMMENDED_EXTENSIONS = [
-    "https://github.com/tarsgate/awto-pi-lot",
+    "npm:awto-pi-lot",
+
+    // BEWARE: this extension doesn't have NPM Provenance enabled yet:
     "npm:pi-wtf",
 ];
 
