@@ -22,6 +22,7 @@ const AGENT_USER = "aidev";
 const LAUNCHER_SCRIPT_FILENAME = "spi";
 const AGENT_GROUP_NAME = "aiteam";
 const DEFAULT_UMASK = "007";
+const MIN_NODE_MAJOR_VERSION = 22;
 
 type GithubApiReleasesJson = {
     assets: {
@@ -348,6 +349,32 @@ async function installAgentUsingNpm(verbose?: boolean): Promise<void> {
     const cmd = `mkdir -p ${installDir} && cd ${installDir} && npm install${npmLogLevel} ${AGENT_PACKAGE}`;
     await runAsAgentUser(cmd, verbose);
     console.log("Package installed.");
+}
+
+async function checkNodeVersion(
+    label: string,
+    commandPrefix?: string
+): Promise<void> {
+    const nodeVersionCmd = "node --version";
+    const cmd = commandPrefix
+        ? `${commandPrefix} ${nodeVersionCmd}`
+        : nodeVersionCmd;
+    try {
+        const { stdout } = await execAsync(cmd);
+        const version = stdout.trim().replace(/^v/, "");
+        const major = parseInt(version.split(".")[0], 10);
+        if (isNaN(major) || major < MIN_NODE_MAJOR_VERSION) {
+            console.error(
+                `Error: NodeJS version ${version} for ${label} is less than required v${MIN_NODE_MAJOR_VERSION}.x`
+            );
+            process.exit(1);
+        }
+    } catch {
+        console.error(
+            `Error: NodeJS not found for ${label}. Please install Node.js v${MIN_NODE_MAJOR_VERSION} or newer.`
+        );
+        process.exit(1);
+    }
 }
 
 async function checkWget(): Promise<void> {
@@ -1040,22 +1067,7 @@ async function main() {
         console.error("Error: npm not found. Please install npm.");
         process.exit(1);
     }
-    try {
-        const { stdout } = await execAsync("node -v");
-        const version = stdout.trim().replace(/^v/, "");
-        const major = parseInt(version.split(".")[0], 10);
-        if (isNaN(major) || major < 22) {
-            console.error(
-                `Error: Node.js version ${version} is less than required 22.x`
-            );
-            process.exit(1);
-        }
-    } catch {
-        console.error(
-            "Error: node not found. Please install Node.js v22 or newer."
-        );
-        process.exit(1);
-    }
+    await checkNodeVersion("current user");
 
     if (opts.paranoid) {
         paranoidMode = true;
@@ -1082,6 +1094,9 @@ async function main() {
 
     await ensureAgentGroupExists();
     await ensureAgentUserExists();
+
+    // Verify Node version for agent user
+    await checkNodeVersion("agent user", `sudo -i -u ${AGENT_USER}`);
 
     // Ensure both users belong to the agent group, and agent user belongs exclusively to it
     const currentUser = os.userInfo().username;
