@@ -1027,6 +1027,36 @@ async function main() {
     program.parse(process.argv);
     const opts = program.opts();
 
+    // Requirement checks (placed after parse so --help/--version still work)
+    try {
+        await execAsync("which git");
+    } catch {
+        console.error("Error: git not found. Please install git.");
+        process.exit(1);
+    }
+    try {
+        await execAsync("which npm");
+    } catch {
+        console.error("Error: npm not found. Please install npm.");
+        process.exit(1);
+    }
+    try {
+        const { stdout } = await execAsync("node -v");
+        const version = stdout.trim().replace(/^v/, "");
+        const major = parseInt(version.split(".")[0], 10);
+        if (isNaN(major) || major < 22) {
+            console.error(
+                `Error: Node.js version ${version} is less than required 22.x`
+            );
+            process.exit(1);
+        }
+    } catch {
+        console.error(
+            "Error: node not found. Please install Node.js v22 or newer."
+        );
+        process.exit(1);
+    }
+
     if (opts.paranoid) {
         paranoidMode = true;
     }
