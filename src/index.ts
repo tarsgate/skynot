@@ -64,6 +64,7 @@ const CURRENT_OS = (() => {
 })();
 
 type GithubApiReleasesJson = {
+    tag_name: string;
     assets: {
         name: string;
         browser_download_url: string;
@@ -411,7 +412,25 @@ async function installAgentUsingNpm(verbose?: boolean): Promise<void> {
         console.log(`${AGENT_NPM_PACKAGE} is already installed, skipping.`);
         return;
     }
-    console.log(`Installing ${AGENT_NPM_PACKAGE} into ${installDir}...`);
+    let version: Option<string> = Nothing;
+    try {
+        const { stdout } = await execAsync(
+            `npm view ${AGENT_NPM_PACKAGE} version`
+        );
+        const trimmed = stdout.trim();
+        if (trimmed.length > 0) {
+            version = new Some(trimmed);
+        }
+    } catch {
+        // Ignore if unable to query npm registry
+    }
+    const versionStr =
+        version instanceof Some
+            ? ` (version ${version.value})`
+            : Empty.string();
+    console.log(
+        `Downloading and installing ${AGENT_NPM_PACKAGE}${versionStr} into ${installDir}...`
+    );
     const npmLogLevel = verbose ? " --loglevel info" : "";
     const cmd = `mkdir -p ${installDir} && cd ${installDir} && npm install${npmLogLevel} ${AGENT_NPM_PACKAGE}`;
     await runAsAgentUser(cmd, verbose);
@@ -478,14 +497,19 @@ async function installAgentFromTarball(
         return;
     }
 
-    console.log(`Installing ${tarballName} into ${piInstallDir}...`);
-
     const releasesUrl = `https://api.github.com/repos/${AGENT_GITHUB_REPO}/releases/latest`;
     const response = await fetch(releasesUrl);
     if (!response.ok) {
         throw new Error(`Error when getting releases: ${response.status}`);
     }
     const releasesJson = (await response.json()) as GithubApiReleasesJson;
+
+    const tagName = OptionHelpers.ofObj(releasesJson.tag_name);
+    const versionStr =
+        tagName instanceof Some
+            ? ` (version ${tagName.value})`
+            : Empty.string();
+    console.log(`Downloading ${tarballName}${versionStr}...`);
 
     const assets = releasesJson.assets;
     const asset = OptionHelpers.ofObj(
@@ -528,6 +552,7 @@ async function installAgentFromTarball(
         await trashExistingInstallation();
     }
 
+    console.log(`Extracting ${tarballName} into ${piInstallDir}...`);
     const tarVerboseFlag = verbose ? "--verbose" : "";
     const cmd = `cd ${agentUserHome} && tar --extract --gzip ${tarVerboseFlag} --file ${tarballPath}`;
     await runAsAgentUser(cmd, verbose);
