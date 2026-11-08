@@ -66,7 +66,7 @@ The following command‑line flags are available:
 
 Please note, `-u` would technically not trash or reinstall extensions, as they normally live in a different place (`.pi` subdir under `aidev` user's $HOME, and/or $NPM_CONFIG_PREFIX dir).
 
-* Yes, when we say "Trash", we mean sending to the properly designated location of the Trash bin of your OS, in case you need to restore it later.
+\* Yes, when we say "Trash", we mean sending to the properly designated location of the Trash bin of your OS, in case you need to restore it later.
 
 ## Notes
 
