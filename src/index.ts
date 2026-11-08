@@ -465,8 +465,8 @@ async function checkDownloader(): Promise<Downloader> {
 
 async function installAgentFromTarball(
     update: boolean,
-    verbose?: boolean,
-    downloader: Option<Downloader> = Nothing
+    downloader: Downloader,
+    verbose?: boolean
 ): Promise<void> {
     const piInstallDir = getPiInstallDir();
     const platform = os.platform();
@@ -504,9 +504,7 @@ async function installAgentFromTarball(
         verboseStdOut: verbose,
         verboseStdErr: verbose,
     };
-    const downloadTool =
-        downloader instanceof Some ? downloader.value : await checkDownloader();
-    if (downloadTool === "wget") {
+    if (downloader === "wget") {
         const wgetCommandArgs = [assetUrl, `--output-document=${tarballPath}`];
         if (!verbose) {
             wgetCommandArgs.push("--quiet");
@@ -1448,7 +1446,13 @@ async function main() {
         await installAgentUsingNpm(opts.verbose);
         piBinaryPath = `${installDir}/node_modules/.bin/pi`;
     } else {
-        await installAgentFromTarball(opts.update, opts.verbose, downloader);
+        if (downloader instanceof Some) {
+            await installAgentFromTarball(
+                opts.update,
+                downloader.value,
+                opts.verbose
+            );
+        }
         piBinaryPath = `${installDir}/pi`;
     }
 
