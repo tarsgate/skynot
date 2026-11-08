@@ -18,7 +18,7 @@ This repository is just a quick `npx` tool that helps you set up this ideal appr
 
 ## Installation Steps (performed automatically under-the-hood by skynot)
 
-1. Check if wget is present; if not: abort suggesting user to install it or use `--npm` flag.
+1. Check if requirements to run skynot are met.
 2. Create a user named `aidev`, if missing.
 3. Create a group named `aiteam`, if missing.
 4. Assign both `aidev` user and current user to group `aiteam`.
@@ -80,3 +80,4 @@ Please note, `-u` would technically not wipe or reinstall extensions, as they no
 * NPM's `npx` (install with `brew install npm` or `apt install npm`)
 * git v2.46 or newer (required for wildcard support in `git config --global safe.directory`)
 * `setfacl` command in Linux (to setup ACLs; in Ubuntu this command is provided by the `acl` APT package)
+* wget/curl to be able to do fast download of Pi's tarball (if not present, npm command can be used instead if you use --npm flag, which might be slower)
