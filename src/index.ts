@@ -525,7 +525,7 @@ async function installAgentFromTarball(
     }
 
     if (update) {
-        await wipeInstallation();
+        await trashExistingInstallation();
     }
 
     const tarVerboseFlag = verbose ? "--verbose" : "";
@@ -1188,14 +1188,74 @@ async function applyGitIdentity(identity: GitIdentity): Promise<void> {
     );
 }
 
-async function wipeInstallation(): Promise<void> {
+function getTrashDir(): string {
+    if (CURRENT_OS === UnixBasedOS.MacOS) {
+        return path.join(agentUserHome, ".Trash");
+    }
+    return path.join(agentUserHome, ".local", "share", "Trash", "files");
+}
+
+function getTrashDestination(trashDir: string): string {
+    const baseName = "pi";
+    const initialTarget = path.join(trashDir, baseName);
+    if (!fs.existsSync(initialTarget)) {
+        return initialTarget;
+    }
+    const now = new Date();
+    const pad = (n: number) => n.toString().padStart(2, "0");
+    const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(
+        now.getDate()
+    )}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(
+        now.getSeconds()
+    )}`;
+    const timestampedTarget = path.join(trashDir, `${baseName}_${timestamp}`);
+    if (!fs.existsSync(timestampedTarget)) {
+        return timestampedTarget;
+    }
+    let index = 1;
+    while (
+        fs.existsSync(path.join(trashDir, `${baseName}_${timestamp}_${index}`))
+    ) {
+        index++;
+    }
+    return path.join(trashDir, `${baseName}_${timestamp}_${index}`);
+}
+
+async function trashExistingInstallation(): Promise<void> {
     const installDir = getPiInstallDir();
     if (fs.existsSync(installDir)) {
-        console.log(`Wiping existing installation at ${installDir}...`);
-        await runAsAgentUser(`rm -rf ${installDir}`);
-        console.log("Installation wiped.");
+        const trashDir = getTrashDir();
+        const targetPath = getTrashDestination(trashDir);
+        console.log(
+            `Moving existing installation at ${installDir} to trash bin (${targetPath})...`
+        );
+        await runAsAgentUser(
+            `mkdir -p "${trashDir}" && mv "${installDir}" "${targetPath}"`
+        );
+        if (CURRENT_OS !== UnixBasedOS.MacOS) {
+            const trashInfoDir = path.join(
+                agentUserHome,
+                ".local",
+                "share",
+                "Trash",
+                "info"
+            );
+            const targetName = path.basename(targetPath);
+            const now = new Date();
+            const deletionDate = now.toISOString().replace(/\.\d{3}Z$/, "");
+            const trashInfoPath = path.join(
+                trashInfoDir,
+                `${targetName}.trashinfo`
+            );
+            await runAsAgentUser(
+                `mkdir -p "${trashInfoDir}" && printf '[Trash Info]\\nPath=%s\\nDeletionDate=%s\\n' "${installDir}" "${deletionDate}" > "${trashInfoPath}"`
+            );
+        }
+        console.log(`Installation sent to trash bin: ${targetPath}`);
     } else {
-        console.log("No existing installation found, nothing to wipe.");
+        console.log(
+            "No existing installation found, nothing to send to trash bin."
+        );
     }
 }
 
@@ -1293,7 +1353,7 @@ async function main() {
         )
         .option(
             "-u, --update",
-            `Wipe and reinstall Pi, to get the latest version (everything else should remain intact, e.g. Pi's extensions/settings/sessions/... which live in ${AGENT_USER}'s $HOME/.pi/agent/ directory, etc.).`
+            `Trash previous install of Pi and reinstall, to get the latest version (everything else should remain intact, e.g. Pi's extensions/settings/sessions/... which live in ${AGENT_USER}'s $HOME/.pi/agent/ directory, etc.).`
         )
         .option(
             "-e, --extensions",
@@ -1441,7 +1501,7 @@ async function main() {
     let piBinaryPath: string;
     if (opts.npm) {
         if (opts.update) {
-            await wipeInstallation();
+            await trashExistingInstallation();
         }
         await installAgentUsingNpm(opts.verbose);
         piBinaryPath = `${installDir}/node_modules/.bin/pi`;
