@@ -444,20 +444,29 @@ async function checkNodeVersion(
     }
 }
 
-async function checkWget(): Promise<void> {
+type Downloader = "wget" | "curl";
+
+async function checkDownloader(): Promise<Downloader> {
     try {
         await execAsync("which wget");
-    } catch (err) {
-        console.error(
-            "Error: wget not found. Either install wget or use --npm flag."
-        );
-        process.exit(1);
+        return "wget";
+    } catch {
+        try {
+            await execAsync("which curl");
+            return "curl";
+        } catch {
+            console.error(
+                "Error: Neither wget nor curl found. Either install wget or curl, or use --npm flag."
+            );
+            process.exit(1);
+        }
     }
 }
 
 async function installAgentFromTarball(
     update: boolean,
-    verbose?: boolean
+    verbose?: boolean,
+    downloader?: Downloader
 ): Promise<void> {
     const piInstallDir = getPiInstallDir();
     const platform = os.platform();
@@ -490,16 +499,31 @@ async function installAgentFromTarball(
     const assetUrl = asset.value.browser_download_url;
 
     const tarballPath = path.join("/var/tmp", tarballName);
-    // wget shows progeress in stderr
-    const wgetProcessOptions = {
+    // wget and curl show progress in stderr
+    const downloadProcessOptions = {
         verboseStdOut: verbose,
         verboseStdErr: verbose,
     };
-    const wgetCommandArgs = [assetUrl, `--output-document=${tarballPath}`];
-    if (!verbose) {
-        wgetCommandArgs.push("--quiet");
+    const downloadTool = downloader ?? (await checkDownloader());
+    if (downloadTool === "wget") {
+        const wgetCommandArgs = [assetUrl, `--output-document=${tarballPath}`];
+        if (!verbose) {
+            wgetCommandArgs.push("--quiet");
+        }
+        await runCommand("wget", wgetCommandArgs, downloadProcessOptions);
+    } else {
+        const curlCommandArgs = [
+            "--location",
+            "--fail",
+            "--output",
+            tarballPath,
+            assetUrl,
+        ];
+        if (!verbose) {
+            curlCommandArgs.push("--silent");
+        }
+        await runCommand("curl", curlCommandArgs, downloadProcessOptions);
     }
-    await runCommand("wget", wgetCommandArgs, wgetProcessOptions);
 
     if (update) {
         await wipeInstallation();
@@ -1393,9 +1417,10 @@ async function main() {
         return;
     }
 
-    // wget is needed to download tarball
+    // wget or curl is needed to download tarball
+    let downloader: Downloader | undefined;
     if (!opts.npm) {
-        await checkWget();
+        downloader = await checkDownloader();
     }
 
     await ensureAgentGroupExists();
@@ -1422,7 +1447,7 @@ async function main() {
         await installAgentUsingNpm(opts.verbose);
         piBinaryPath = `${installDir}/node_modules/.bin/pi`;
     } else {
-        await installAgentFromTarball(opts.update, opts.verbose);
+        await installAgentFromTarball(opts.update, opts.verbose, downloader);
         piBinaryPath = `${installDir}/pi`;
     }
 
