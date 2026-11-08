@@ -58,14 +58,15 @@ The following command‑line flags are available:
 |`--npm`       | `-n`   | Install Pi using npm instead of tarball (likely to be slower though).             |
 |`--paranoid`  | `-p`   | Refrain from caching the sudo password; ask for it every time it is needed.       |
 |`--ssh`       | `-s`   | Copy SSH keys to the `aidev` user for git+ssh (& add GitHub to `known_hosts`).    |
-|`--update`    | `-u`   | Wipe any previous existing install of Pi and reinstall, to get the latest version.|
+|`--update`    | `-u`   | Trash* any existing install of Pi and reinstall, to get the latest version.       |
 |`--verbose`   | `-v`   | Show more output from install commands (useful for debugging/low-bandwidth).      |
 |`--version`   | `-V`   | Output the version number.                                                        |
 |`--destroy`   |`--BURN`| Delete the `aidev` user, all its data (in `$HOME`), and the `aiteam` group.       |
 
 
-Please note, `-u` would technically not wipe or reinstall extensions, as they normally live in a different place (`.pi` subdir under `aidev` user's $HOME, and/or $NPM_CONFIG_PREFIX dir).
+Please note, `-u` would technically not trash or reinstall extensions, as they normally live in a different place (`.pi` subdir under `aidev` user's $HOME, and/or $NPM_CONFIG_PREFIX dir).
 
+* Yes, when we say "Trash", we mean sending to the properly designated location of the Trash bin of your OS, in case you need to restore it later.
 
 ## Notes
 
