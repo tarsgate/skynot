@@ -466,7 +466,7 @@ async function checkDownloader(): Promise<Downloader> {
 async function installAgentFromTarball(
     update: boolean,
     verbose?: boolean,
-    downloader?: Downloader
+    downloader: Option<Downloader> = Nothing
 ): Promise<void> {
     const piInstallDir = getPiInstallDir();
     const platform = os.platform();
@@ -504,7 +504,8 @@ async function installAgentFromTarball(
         verboseStdOut: verbose,
         verboseStdErr: verbose,
     };
-    const downloadTool = downloader ?? (await checkDownloader());
+    const downloadTool =
+        downloader instanceof Some ? downloader.value : await checkDownloader();
     if (downloadTool === "wget") {
         const wgetCommandArgs = [assetUrl, `--output-document=${tarballPath}`];
         if (!verbose) {
@@ -1418,9 +1419,9 @@ async function main() {
     }
 
     // wget or curl is needed to download tarball
-    let downloader: Downloader | undefined;
+    let downloader: Option<Downloader> = Nothing;
     if (!opts.npm) {
-        downloader = await checkDownloader();
+        downloader = new Some(await checkDownloader());
     }
 
     await ensureAgentGroupExists();
