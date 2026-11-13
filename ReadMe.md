@@ -1,19 +1,23 @@
 SkyNot [![NPM Version](https://img.shields.io/npm/v/skynot)](https://www.npmjs.com/package/skynot)
 ======
 
-Ever tempted to use or try out the infamous [pi-coding-agent](https://github.com/earendil-works/pi) but got put off by its lack of out-of-the-box sandbox?
+Using pi.dev harness feels liberating because it doesn't have any default guardrails. But this is dangerous because:
+* The agent could potentially corrupt/wipe your personal data.
+* The agent might snoop in your personal data (and you might not be happy about feeding that to the big AI companies).
 
-Some people use and/or develop guardrails extensions or poor-man sandboxing solutions; others just deploy it to their VPS so that any potential damage is contained.
+Normally the solutions given to this usually fall into two cateogories:
+1. Local security: run the harness in some sort of container or sandbox, or extension that analyses the tools usage and prevents some actions, etc.
+2. Remote separation: run the harness in the cloud, in a VM or VPS that can be easily replaced (in case it gets corrupted) and doesn't have your data.
 
-But the virtue is somewhere in the middle:
-- No need to go to the extreme of complicated cloud deploys to just try out some clanking business.
-- No need to setup potentially-unsafe tweaks or plugins that may give you a false sense of security, or too many permissions issues for your clanker to be productive.
+The main problems with the above solutions are, respectively:
+1. Many AI models these days are so smart that they can escape containerization (they even escaped the limits that Anthropic gave them themselves!).
+2. Remote harnesses downsides: latency, and needing to setup a system to install all your dev tools remotely (command-line tools might be easy, but how about IDEs in order to view/tweak the agent's work?).
 
-Why not just use the **unix** model? Give Pi a user in your system, a $HOME where to place its git repositories and you're off to the races.
+Skynot attempts to fix this problem with a solution that sits in the middle:
+* You still run the harness locally, so the agent has access to all your dev tools, and you can still use your desktop IDEs.
+* The security is based on **Unix filesystem permissions** (whose security has been proven for decades and when it fails, it ends up being a CVE fixed the next day): a new user `aidev` gets created in your system, which doesn't have `sudo` privileges, and Pi is installed inside its home. Then you'll place all your work directories inside its `$HOME/Work` folder, which will be a playground where both the agent and you have permissions to read/write.
 
-This repository is just a quick `npx` tool that helps you set up this ideal approach: run it with a simple `npx skynot` and it will guide you through the process and ask you for sudo permissions in each step that it requires, informing you of what it is doing at all times.
-
-(This repo is of course opensource too so that you can check that what it says it does is what it really does.)
+This repository is a TypeScript codebase of a single installer that you can invoke via `npx skynot` that will setup everything, informing you of what it is doing at all times. (This repo is of course opensource too so that you can check that what it says it does is what it really does.) You only need to run this once (except for when you need to update Pi to a new version, in which case you can just invoke it again with the flag `--update`, not needing to remember the flags that you used the first time). After skynot successfully installs Pi in your computer, you can invoke it by typing `spi`.
 
 
 ## Installation Steps (performed automatically under-the-hood by skynot)
