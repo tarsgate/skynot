@@ -496,6 +496,38 @@ async function checkDownloader(): Promise<Downloader> {
     }
 }
 
+async function downloadFile(
+    url: string,
+    destPath: string,
+    downloader: Downloader,
+    verbose?: boolean
+): Promise<void> {
+    // wget and curl show progress in stderr
+    const downloadProcessOptions = {
+        verboseStdOut: verbose,
+        verboseStdErr: verbose,
+    };
+    if (downloader === "wget") {
+        const wgetCommandArgs = [url, `--output-document=${destPath}`];
+        if (!verbose) {
+            wgetCommandArgs.push("--quiet");
+        }
+        await runCommand("wget", wgetCommandArgs, downloadProcessOptions);
+    } else {
+        const curlCommandArgs = [
+            "--location",
+            "--fail",
+            "--output",
+            destPath,
+            url,
+        ];
+        if (!verbose) {
+            curlCommandArgs.push("--silent");
+        }
+        await runCommand("curl", curlCommandArgs, downloadProcessOptions);
+    }
+}
+
 async function installAgentFromTarball(
     update: boolean,
     downloader: Downloader,
@@ -537,30 +569,7 @@ async function installAgentFromTarball(
     const assetUrl = asset.value.browser_download_url;
 
     const tarballPath = path.join("/var/tmp", tarballName);
-    // wget and curl show progress in stderr
-    const downloadProcessOptions = {
-        verboseStdOut: verbose,
-        verboseStdErr: verbose,
-    };
-    if (downloader === "wget") {
-        const wgetCommandArgs = [assetUrl, `--output-document=${tarballPath}`];
-        if (!verbose) {
-            wgetCommandArgs.push("--quiet");
-        }
-        await runCommand("wget", wgetCommandArgs, downloadProcessOptions);
-    } else {
-        const curlCommandArgs = [
-            "--location",
-            "--fail",
-            "--output",
-            tarballPath,
-            assetUrl,
-        ];
-        if (!verbose) {
-            curlCommandArgs.push("--silent");
-        }
-        await runCommand("curl", curlCommandArgs, downloadProcessOptions);
-    }
+    await downloadFile(assetUrl, tarballPath, downloader, verbose);
 
     if (update) {
         await trashExistingInstallation();
@@ -573,9 +582,102 @@ async function installAgentFromTarball(
     console.log(`Installed Pi from tarball.`);
 }
 
-async function updatePath(): Promise<void> {
+const GH_GITHUB_REPO = "cli/cli";
+
+/**
+ * Map Node's platform/arch names to the ones used by the GoReleaser-built
+ * GitHub CLI release assets (e.g. linux/amd64 vs linux/x64).
+ */
+function getGhReleaseTarget(): { platform: string; arch: string } {
+    const archMap: Record<string, string> = {
+        x64: "amd64",
+        arm64: "arm64",
+        ia32: "386",
+        arm: "armv6",
+    };
+    const mappedArch = archMap[os.arch()];
+    if (!mappedArch) {
+        throw new Error(
+            `Unsupported architecture for GitHub CLI download: ${os.arch()}`
+        );
+    }
+    return {
+        platform: CURRENT_OS === UnixBasedOS.MacOS ? "macOS" : "linux",
+        arch: mappedArch,
+    };
+}
+
+async function installGithubCliFromTarball(
+    downloader: Downloader,
+    verbose?: boolean
+): Promise<void> {
+    const ghInstallDir = path.join(agentUserHome, "gh");
+    const ghBinaryPath = path.join(ghInstallDir, "bin", "gh");
+
+    if (fs.existsSync(ghBinaryPath)) {
+        console.log(`GitHub CLI is already installed, skipping.`);
+        return;
+    }
+
+    const target = getGhReleaseTarget();
+    // Linux ships a .tar.gz, macOS only ships a .zip
+    const isZip = CURRENT_OS === UnixBasedOS.MacOS;
+    const archiveExt = isZip ? "zip" : "tar.gz";
+
+    const releasesUrl = `https://api.github.com/repos/${GH_GITHUB_REPO}/releases/latest`;
+    const response = await fetch(releasesUrl);
+    if (!response.ok) {
+        throw new Error(
+            `Error when getting GitHub CLI releases: ${response.status}`
+        );
+    }
+    const releasesJson = (await response.json()) as GithubApiReleasesJson;
+
+    const tagName = OptionHelpers.ofObj(releasesJson.tag_name);
+    const versionStr =
+        tagName instanceof Some
+            ? ` (version ${tagName.value})`
+            : Empty.string();
+
+    // Find the asset whose name matches gh_<version>_<platform>_<arch>.<ext>
+    const assetNamePattern = new RegExp(
+        `^gh_.*_${target.platform}_${target.arch}\\.${archiveExt}$`
+    );
+    const asset = OptionHelpers.ofObj(
+        releasesJson.assets.find((a) => assetNamePattern.test(a.name))
+    );
+    if (asset instanceof None) {
+        throw new Error(
+            `Could not find a GitHub CLI release asset for ${target.platform}/${target.arch}.`
+        );
+    }
+    const assetName = asset.value.name;
+    const assetUrl = asset.value.browser_download_url;
+
+    console.log(`Downloading GitHub CLI ${assetName}${versionStr}...`);
+    const archivePath = path.join("/var/tmp", assetName);
+    await downloadFile(assetUrl, archivePath, downloader, verbose);
+
+    console.log(`Extracting ${assetName} into ${ghInstallDir}...`);
+    // The archives contain a top-level 'gh_<version>_<platform>_<arch>/' dir,
+    // so extract in a temp dir and move only the 'bin' subdir, landing the
+    // binary at ~aidev/gh/bin/gh.
+    const extractDir = `/var/tmp/gh-extract-${process.pid}`;
+    const tarVerboseFlag = verbose ? "--verbose" : "";
+    const extractCmd = isZip
+        ? `unzip -o -q ${archivePath} -d ${extractDir}`
+        : `mkdir -p ${extractDir} && tar --extract --gzip ${tarVerboseFlag} --file ${archivePath} --directory ${extractDir}`;
+    const cmd = `mkdir -p ${ghInstallDir} && rm -rf ${extractDir} && ${extractCmd} && mv ${extractDir}/gh_*/bin ${ghInstallDir}/ && rm -rf ${extractDir}`;
+    await runAsAgentUser(cmd, verbose);
+    console.log(`Installed GitHub CLI at ${ghBinaryPath}.`);
+}
+
+async function addToAgentUserPath(
+    label: string,
+    dirExpr: string
+): Promise<void> {
     const rcFile = getShellRcFile();
-    const line = `export PATH=\$HOME/${AGENT_USER}/node_modules/.bin:\$PATH`;
+    const line = `export PATH=${dirExpr}:\$PATH`;
     const rcPath = `${agentUserHome}/${rcFile}`;
 
     // Check locally if the line is already present
@@ -583,18 +685,23 @@ async function updatePath(): Promise<void> {
         const content = fs.readFileSync(rcPath, "utf-8");
         if (content.includes(line)) {
             console.log(
-                `${AGENT_USER}'s PATH already configured in ${rcFile}, skipping.`
+                `${AGENT_USER}'s PATH already has ${label} in ${rcFile}, skipping.`
             );
             return;
         }
     }
 
-    console.log(
-        `Adding agent binary directory to ${AGENT_USER}'s PATH via ${rcFile}...`
-    );
+    console.log(`Adding ${label} to ${AGENT_USER}'s PATH via ${rcFile}...`);
     const checkCmd = `grep -Fx '${line}' ${rcPath} 2>/dev/null || echo '${line}' >> ${rcPath}`;
     await runAsAgentUser(checkCmd);
     console.log(`${rcFile} updated.`);
+}
+
+async function updatePath(): Promise<void> {
+    await addToAgentUserPath(
+        "agent binary directory",
+        `\$HOME/${AGENT_USER}/node_modules/.bin`
+    );
 }
 
 async function updateAgentUserUmask(): Promise<void> {
@@ -1500,7 +1607,7 @@ async function main() {
         )
         .option(
             "-t, --token <token>",
-            `Configure git user.name and user.email for the '${AGENT_USER}' user by retrieving them from GitHub's API using the supplied GitHub token (alternative to --git and --ssh).`
+            `Configure git user.name and user.email for the '${AGENT_USER}' user by retrieving them from GitHub's API using the supplied GitHub token (alternative to --git and --ssh). Also installs the GitHub CLI ('gh') for the '${AGENT_USER}' user.`
         )
         .option(
             "-p, --paranoid",
@@ -1571,6 +1678,18 @@ async function main() {
     }
     await checkNodeVersion("current user");
 
+    // On macOS the GitHub CLI is distributed as a .zip, so unzip is needed
+    if (opts.token && CURRENT_OS === UnixBasedOS.MacOS) {
+        try {
+            await execAsync("which unzip");
+        } catch {
+            console.error(
+                "Error: unzip not found. Please install it (required to extract the GitHub CLI for --token)."
+            );
+            process.exit(1);
+        }
+    }
+
     if (opts.paranoid) {
         paranoidMode = true;
     }
@@ -1632,9 +1751,9 @@ async function main() {
         return;
     }
 
-    // wget or curl is needed to download tarball
+    // wget or curl is needed to download tarball (and the GitHub CLI, when --token is used)
     let downloader: Option<Downloader> = Nothing;
-    if (!opts.npm) {
+    if (!opts.npm || opts.token) {
         downloader = new Some(await checkDownloader());
     }
 
@@ -1680,11 +1799,22 @@ async function main() {
         await copySshKeys();
     }
 
+    // --token implies the agent will need the GitHub CLI, so install it
+    if (opts.token && downloader instanceof Some) {
+        await installGithubCliFromTarball(downloader.value, opts.verbose);
+    }
+
     if (resolvedGitIdentity instanceof Some) {
         await applyGitIdentity(resolvedGitIdentity.value);
     }
 
     await updatePath();
+    if (opts.token) {
+        await addToAgentUserPath(
+            "GitHub CLI binary directory",
+            `\$HOME/gh/bin`
+        );
+    }
     await updateAgentUserUmask();
     await setupUmaskScriptForCurrentUser();
 
