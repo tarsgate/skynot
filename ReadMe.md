@@ -55,6 +55,9 @@ The following command‑line flags are available:
 |`--extensions`| `-e`   | DEPRECATED: Use `spi install <extension>` instead, after install.                 |
 |`--git ["id"]`| `-g[i]`| Set git `user.name`/`user.email` for `aidev`. No arg: copies from current user.   |
 |              |        | With arg (e.g. `"Name Surname <user@example.com>"`): uses that instead.           |
+|`--token <tk>`| `-t`   | Set git `user.name`/`user.email` for `aidev` by fetching them from GitHub's API.  |
+|              |        | Alternative to `--git` and `--ssh` (mutually exclusive with both). Token needs    |
+|              |        | `user:email` scope to read a private email.                                       |
 |`--npm`       | `-n`   | Install Pi using npm instead of tarball (likely to be slower though).             |
 |`--paranoid`  | `-p`   | Refrain from caching the sudo password; ask for it every time it is needed.       |
 |`--ssh`       | `-s`   | Copy SSH keys to the `aidev` user for git+ssh (& add GitHub to `known_hosts`).    |

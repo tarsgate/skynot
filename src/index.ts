@@ -71,6 +71,20 @@ type GithubApiReleasesJson = {
     }[];
 };
 
+type GithubApiUserJson = {
+    login: string;
+    name: string | null;
+    email: string | null;
+};
+
+type GithubApiEmailJson = {
+    email: string;
+    primary: boolean;
+    verified: boolean;
+};
+
+const GITHUB_API_BASE_URL = "https://api.github.com";
+
 type RunProcessOptions = {
     cwd?: string;
     onSpawn?: (child: ChildProcessWithoutNullStreams) => void;
@@ -1138,6 +1152,93 @@ async function copySshKeys(): Promise<void> {
 
 type GitIdentity = { name: string; email: string };
 
+function githubApiHeaders(token: string): Record<string, string> {
+    return {
+        "Authorization": `Bearer ${token}`,
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "skynot",
+    };
+}
+
+/**
+ * Retrieve the git identity (name and email) from a GitHub token, by querying
+ * the GitHub API. The name comes from the user profile, and the email is
+ * preferably the primary verified email (which may be private/not exposed in
+ * the public profile).
+ */
+async function resolveGitIdentityFromGithubToken(
+    token: string
+): Promise<GitIdentity> {
+    const userResponse = await fetch(`${GITHUB_API_BASE_URL}/user`, {
+        headers: githubApiHeaders(token),
+    });
+    if (!userResponse.ok) {
+        if (userResponse.status === 401) {
+            console.error(
+                "Error: GitHub token is invalid or expired (HTTP 401 Unauthorized)."
+            );
+            process.exit(1);
+        }
+        throw new Error(
+            `Error when getting GitHub user info: ${userResponse.status}`
+        );
+    }
+    const user = (await userResponse.json()) as GithubApiUserJson;
+
+    const profileName = user.name ?? Empty.string();
+    const profileEmail = user.email ?? Empty.string();
+    const login = user.login ?? Empty.string();
+
+    let name: Option<string> = Nothing;
+    if (profileName.trim() !== Empty.string()) {
+        name = new Some(profileName.trim());
+    } else if (login.trim() !== Empty.string()) {
+        // Fall back to the GitHub username (handle) when no display name is set
+        name = new Some(login.trim());
+    }
+
+    let email: Option<string> = Nothing;
+
+    // Try the emails endpoint first, in case the user's email is private (in
+    // which case the /user endpoint doesn't expose it).
+    try {
+        const emailsResponse = await fetch(
+            `${GITHUB_API_BASE_URL}/user/emails`,
+            { headers: githubApiHeaders(token) }
+        );
+        if (emailsResponse.ok) {
+            const emails =
+                (await emailsResponse.json()) as GithubApiEmailJson[];
+            const primaryEmail = emails.find((e) => e.primary && e.verified);
+            if (primaryEmail) {
+                email = new Some(primaryEmail.email.trim());
+            }
+        }
+    } catch {
+        // Ignore errors here; fall back to the public profile email below
+    }
+
+    if (email instanceof None && profileEmail.trim() !== Empty.string()) {
+        email = new Some(profileEmail.trim());
+    }
+
+    if (name instanceof None || email instanceof None) {
+        console.error(
+            "Could not determine git name and/or email from the GitHub token. " +
+                "Make sure your GitHub profile has a name and an email set " +
+                "(or that the token has the 'user:email' scope to read your primary email). " +
+                'Alternatively pass an explicit identity: --git "Name Surname <email@example.com>"'
+        );
+        process.exit(1);
+    }
+
+    console.log(
+        `Retrieved git identity from GitHub: ${name.value} <${email.value}>`
+    );
+    return { name: name.value, email: email.value };
+}
+
 /**
  * Parse and resolve the git identity early (before any system changes).
  * This validates the --git argument and, if no explicit identity is given,
@@ -1398,6 +1499,10 @@ async function main() {
             `Configure git user.name and user.email for the '${AGENT_USER}' user. If no argument is given, copies from current user's git config. If an argument is supplied (e.g. "Name Surname <user@example.com>"), uses that instead.`
         )
         .option(
+            "-t, --token <token>",
+            `Configure git user.name and user.email for the '${AGENT_USER}' user by retrieving them from GitHub's API using the supplied GitHub token (alternative to --git and --ssh).`
+        )
+        .option(
             "-p, --paranoid",
             `Refrain from caching the sudo password; ask for it every time it is needed.`
         )
@@ -1470,9 +1575,35 @@ async function main() {
         paranoidMode = true;
     }
 
-    // Parse and validate --git argument early, before any system changes
+    if (opts.git && opts.token) {
+        console.error(
+            "Error: --git (-g) and --token (-t) are mutually exclusive; use only one of them."
+        );
+        process.exit(1);
+    }
+    if (opts.ssh && opts.token) {
+        console.error(
+            "Error: --ssh (-s) and --token (-t) are mutually exclusive; use only one of them."
+        );
+        process.exit(1);
+    }
+
+    // Parse and validate --git or --token argument early, before any system changes
     let resolvedGitIdentity: Option<GitIdentity> = Nothing;
-    if (opts.git) {
+    if (opts.token) {
+        if (
+            typeof opts.token !== "string" ||
+            opts.token.trim() === Empty.string()
+        ) {
+            console.error(
+                "Invalid --token argument. Expected a non-empty GitHub token string."
+            );
+            process.exit(1);
+        }
+        resolvedGitIdentity = new Some(
+            await resolveGitIdentityFromGithubToken(opts.token.trim())
+        );
+    } else if (opts.git) {
         let identity: Option<string>;
         if (opts.git === true) {
             identity = Nothing;
