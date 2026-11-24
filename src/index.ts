@@ -174,7 +174,7 @@ async function askQuestion(query: string, silent = false): Promise<string> {
             stdin.setRawMode(true);
             stdin.resume();
             stdin.setEncoding("utf-8");
-            let input = "";
+            let input = Empty.string();
             const onData = (char: string) => {
                 if (char === "\n" || char === "\r" || char === "\u0004") {
                     stdin.removeListener("data", onData);
@@ -219,7 +219,7 @@ async function runSudoWithPassword(
     }
     sudoArgs.push("bash", "-c", command);
 
-    let stderr = "";
+    let stderr = Empty.string();
 
     const onSpawn = (child: ChildProcessWithoutNullStreams) => {
         child.stdin.write(password + "\n");
@@ -445,7 +445,7 @@ async function installAgentUsingNpm(verbose?: boolean): Promise<void> {
     console.log(
         `Downloading and installing ${AGENT_NPM_PACKAGE}${versionStr} into ${installDir}...`
     );
-    const npmLogLevel = verbose ? " --loglevel info" : "";
+    const npmLogLevel = verbose ? " --loglevel info" : Empty.string();
     const cmd = `mkdir -p ${installDir} && cd ${installDir} && npm install${npmLogLevel} ${AGENT_NPM_PACKAGE}`;
     await runAsAgentUser(cmd, verbose);
     console.log("Package installed.");
@@ -461,7 +461,7 @@ async function checkNodeVersion(
         : nodeVersionCmd;
     try {
         const { stdout } = await execAsync(cmd);
-        const version = stdout.trim().replace(/^v/, "");
+        const version = stdout.trim().replace(/^v/, Empty.string());
         const major = parseInt(version.split(".")[0], 10);
         if (isNaN(major) || major < MIN_NODE_MAJOR_VERSION) {
             console.error(
@@ -576,7 +576,7 @@ async function installAgentFromTarball(
     }
 
     console.log(`Extracting ${tarballName} into ${piInstallDir}...`);
-    const tarVerboseFlag = verbose ? "--verbose" : "";
+    const tarVerboseFlag = verbose ? "--verbose" : Empty.string();
     const cmd = `cd ${agentUserHome} && tar --extract --gzip ${tarVerboseFlag} --file ${tarballPath}`;
     await runAsAgentUser(cmd, verbose);
     console.log(`Installed Pi from tarball.`);
@@ -663,7 +663,7 @@ async function installGithubCliFromTarball(
     // so extract in a temp dir and move only the 'bin' subdir, landing the
     // binary at ~aidev/gh/bin/gh.
     const extractDir = `/var/tmp/gh-extract-${process.pid}`;
-    const tarVerboseFlag = verbose ? "--verbose" : "";
+    const tarVerboseFlag = verbose ? "--verbose" : Empty.string();
     const extractCmd = isZip
         ? `unzip -o -q ${archivePath} -d ${extractDir}`
         : `mkdir -p ${extractDir} && tar --extract --gzip ${tarVerboseFlag} --file ${archivePath} --directory ${extractDir}`;
@@ -768,7 +768,7 @@ set_dir_umask
     fs.writeFileSync(scriptPath, scriptContent, { mode: 0o755 });
 
     // Check if already in rc file
-    let rcContent = "";
+    let rcContent = Empty.string();
     if (fs.existsSync(rcPath)) {
         rcContent = fs.readFileSync(rcPath, "utf-8");
     }
@@ -885,7 +885,7 @@ exec sudo -i -u ${AGENT_USER} bash -c "$FULL_SUDO_CMD"
     const rcPath = path.join(currentUserHome, rcFile);
     const pathLine = 'export PATH="$HOME/bin:$PATH"';
 
-    let rcContent = "";
+    let rcContent = Empty.string();
     if (fs.existsSync(rcPath)) {
         rcContent = fs.readFileSync(rcPath, "utf-8");
     }
@@ -1475,7 +1475,9 @@ async function trashExistingInstallation(): Promise<void> {
             );
             const targetName = path.basename(targetPath);
             const now = new Date();
-            const deletionDate = now.toISOString().replace(/\.\d{3}Z$/, "");
+            const deletionDate = now
+                .toISOString()
+                .replace(/\.\d{3}Z$/, Empty.string());
             const trashInfoPath = path.join(
                 trashInfoDir,
                 `${targetName}.trashinfo`
@@ -1501,7 +1503,7 @@ async function destroyInstallation(): Promise<void> {
     );
     console.log(`  - The '${AGENT_GROUP_NAME}' group`);
     console.log(`  - The launcher script ~/bin/${LAUNCHER_SCRIPT_FILENAME}`);
-    console.log("");
+    console.log(Empty.string());
 
     const confirmation = await askQuestion(
         'Are you absolutely sure? Type "DELETE" to confirm: '
