@@ -25,7 +25,7 @@ This repository is just a quick `npx` tool that helps you set up this ideal appr
 5. Create sudoers file so that current user can impersonate `aidev` without needing a (sudo) password.
 6. Setup 007 umask and ACLs for `aidev` and current user to share files without issues.
 7. Download & install Pi under `aidev` user's home: `~aidev/pi/`.
-8. Install the recommended extensions and/or authentication files if user used flags for them.
+8. Install the recommended extensions and/or authentication files if user used flags for them (plus the GitHub CLI `gh` if `--token` was used).
 9. Configure git to be able to share repositores in `~aidev/` dir.
 10. Add the agent's binary directory to the `aidev` user's `$PATH` env var.
 11. Create a launcher script at `$HOME/bin/spi` for the current user.
@@ -55,6 +55,10 @@ The following command‑line flags are available:
 |`--extensions`| `-e`   | DEPRECATED: Use `spi install <extension>` instead, after install.                 |
 |`--git ["id"]`| `-g[i]`| Set git `user.name`/`user.email` for `aidev`. No arg: copies from current user.   |
 |              |        | With arg (e.g. `"Name Surname <user@example.com>"`): uses that instead.           |
+|`--token <tk>`| `-t`   | Set git `user.name`/`user.email` for `aidev` by fetching them from GitHub's API.  |
+|              |        | Alternative to `--git` and `--ssh` (mutually exclusive with both). Token needs    |
+|              |        | `user:email` scope to read a private email. Also installs the GitHub CLI (`gh`)   |
+|              |        | for the `aidev` user (at `~aidev/gh/bin/gh`, added to its `$PATH`).              |
 |`--npm`       | `-n`   | Install Pi using npm instead of tarball (likely to be slower though).             |
 |`--paranoid`  | `-p`   | Refrain from caching the sudo password; ask for it every time it is needed.       |
 |`--ssh`       | `-s`   | Copy SSH keys to the `aidev` user for git+ssh (& add GitHub to `known_hosts`).    |
@@ -82,3 +86,4 @@ Please note, `-u` would technically not trash or reinstall extensions, as they n
 * git v2.46 or newer (required for wildcard support in `git config --global safe.directory`)
 * `setfacl` command in Linux (to setup ACLs; in Ubuntu this command is provided by the `acl` APT package)
 * wget/curl to be able to do fast download of Pi's tarball (if not present, npm command can be used instead if you use --npm flag, which might be slower)
+* `unzip` command in macOS, to extract the GitHub CLI `gh` (needed only if you use the `--token` flag)
