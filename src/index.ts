@@ -1545,7 +1545,8 @@ async function main() {
     );
     console.log(`\nRECOMMENDED next steps:`);
     console.log(
-        `1. IMPORTANT: Log out of the system and log in again (for group permissions to take effect, $PATH env var to be updated, etc.)`
+        `1. IMPORTANT: **Reboot** your system before continuing (logging out and back in can ` +
+            `leave sessions running without the new '${AGENT_GROUP_NAME}' group permissions)`
     );
     console.log(`2. \`cd\` into '${workDir}'`);
     console.log(`3. Clone the git repository where you will work on`);
