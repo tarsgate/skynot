@@ -61,12 +61,12 @@ The following command‑line flags are available:
 |`--update`    | `-u`   | Trash* any existing install of Pi and reinstall, to get the latest version.       |
 |`--verbose`   | `-v`   | Show more output from install commands (useful for debugging/low-bandwidth).      |
 |`--version`   | `-V`   | Output the version number.                                                        |
-|`--destroy`   |`--BURN`| Delete the `aidev` user, all its data (in `$HOME`), and the `aiteam` group.       |
+|`--TRASH`     |        | Trash* the `aidev` user's `$HOME` (all its data), delete the user & `aiteam` grp. |
 
 
 Please note, `-u` would technically not trash or reinstall extensions, as they normally live in a different place (`.pi` subdir under `aidev` user's $HOME, and/or $NPM_CONFIG_PREFIX dir).
 
-\* Yes, when we say "Trash", we mean sending to the properly designated location of the Trash bin of your OS, in case you need to restore it later.
+\* Yes, when we say "Trash", we mean sending to the properly designated location of the Trash bin of your OS, in case you need to restore it later. This is also what `--TRASH` does with the `aidev` user's `$HOME`: it is moved to **your own** user's Trash bin (since the `aidev` user is about to be deleted) before the user and group are removed, so you can still restore its data afterwards.
 
 ## Notes
 

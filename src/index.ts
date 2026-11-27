@@ -1213,15 +1213,21 @@ async function applyGitIdentity(identity: GitIdentity): Promise<void> {
     );
 }
 
-function getTrashDir(): string {
+function getTrashDir(home: string): string {
     if (CURRENT_OS === UnixBasedOS.MacOS) {
-        return path.join(agentUserHome, ".Trash");
+        return path.join(home, ".Trash");
     }
-    return path.join(agentUserHome, ".local", "share", "Trash", "files");
+    return path.join(home, ".local", "share", "Trash", "files");
 }
 
-function getTrashDestination(trashDir: string): string {
-    const baseName = "pi";
+function getTrashInfoDir(home: string): string {
+    if (CURRENT_OS === UnixBasedOS.MacOS) {
+        return path.join(home, ".Trash");
+    }
+    return path.join(home, ".local", "share", "Trash", "info");
+}
+
+function getTrashDestination(trashDir: string, baseName: string): string {
     const initialTarget = path.join(trashDir, baseName);
     if (!fs.existsSync(initialTarget)) {
         return initialTarget;
@@ -1246,36 +1252,57 @@ function getTrashDestination(trashDir: string): string {
     return path.join(trashDir, `${baseName}_${timestamp}_${index}`);
 }
 
+/**
+ * Write the .trashinfo metadata file on Linux (as defined by the
+ * freedesktop.org Trash specification), so that the trashed item can be
+ * restored by the desktop environment's file manager.
+ */
+async function writeTrashInfoFile(
+    sourcePath: string,
+    targetPath: string,
+    trashInfoDir: string,
+    run: (cmd: string) => Promise<void>
+): Promise<void> {
+    if (CURRENT_OS === UnixBasedOS.MacOS) {
+        return;
+    }
+    const targetName = path.basename(targetPath);
+    const now = new Date();
+    const deletionDate = now.toISOString().replace(/\.\d{3}Z$/, "");
+    const trashInfoPath = path.join(trashInfoDir, `${targetName}.trashinfo`);
+    await run(
+        `mkdir -p "${trashInfoDir}" && printf '[Trash Info]\\nPath=%s\\nDeletionDate=%s\\n' "${sourcePath}" "${deletionDate}" > "${trashInfoPath}"`
+    );
+}
+
+/**
+ * Move a path owned by the '${AGENT_USER}' user into its OS trash bin (instead of
+ * permanently deleting it), also writing the corresponding .trashinfo metadata
+ * file on Linux.
+ */
+async function sendToAgentUserTrash(
+    sourcePath: string,
+    baseName: string
+): Promise<string> {
+    const trashDir = getTrashDir(agentUserHome);
+    const targetPath = getTrashDestination(trashDir, baseName);
+    console.log(`Moving ${sourcePath} to trash bin (${targetPath})...`);
+    await runAsAgentUser(
+        `mkdir -p "${trashDir}" && mv "${sourcePath}" "${targetPath}"`
+    );
+    await writeTrashInfoFile(
+        sourcePath,
+        targetPath,
+        getTrashInfoDir(agentUserHome),
+        (cmd) => runAsAgentUser(cmd)
+    );
+    return targetPath;
+}
+
 async function trashExistingInstallation(): Promise<void> {
     const installDir = getPiInstallDir();
     if (fs.existsSync(installDir)) {
-        const trashDir = getTrashDir();
-        const targetPath = getTrashDestination(trashDir);
-        console.log(
-            `Moving existing installation at ${installDir} to trash bin (${targetPath})...`
-        );
-        await runAsAgentUser(
-            `mkdir -p "${trashDir}" && mv "${installDir}" "${targetPath}"`
-        );
-        if (CURRENT_OS !== UnixBasedOS.MacOS) {
-            const trashInfoDir = path.join(
-                agentUserHome,
-                ".local",
-                "share",
-                "Trash",
-                "info"
-            );
-            const targetName = path.basename(targetPath);
-            const now = new Date();
-            const deletionDate = now.toISOString().replace(/\.\d{3}Z$/, "");
-            const trashInfoPath = path.join(
-                trashInfoDir,
-                `${targetName}.trashinfo`
-            );
-            await runAsAgentUser(
-                `mkdir -p "${trashInfoDir}" && printf '[Trash Info]\\nPath=%s\\nDeletionDate=%s\\n' "${installDir}" "${deletionDate}" > "${trashInfoPath}"`
-            );
-        }
+        const targetPath = await sendToAgentUserTrash(installDir, "pi");
         console.log(`Installation sent to trash bin: ${targetPath}`);
     } else {
         console.log(
@@ -1284,38 +1311,95 @@ async function trashExistingInstallation(): Promise<void> {
     }
 }
 
-async function destroyInstallation(): Promise<void> {
-    console.log("\n=== DESTROY MODE ===");
-    console.log("This will permanently DELETE:");
-    console.log(`  - The '${AGENT_USER}' user`);
+async function trashAgentHome(): Promise<void> {
+    const currentUserHome = os.homedir();
+    const trashDir = getTrashDir(currentUserHome);
+    const reason = "required to send installation to trash bin";
+
+    console.log("\n=== TRASH MODE ===");
+    console.log("This will NOT permanently delete anything. Instead it will:");
     console.log(
-        `  - All data in ${agentUserHome} (the user\'s home directory)`
+        `  - Move ${agentUserHome} (all of '${AGENT_USER}' user's data, including its pi installation, extensions, settings and sessions) to the Trash bin of your user (${trashDir})`
     );
-    console.log(`  - The '${AGENT_GROUP_NAME}' group`);
-    console.log(`  - The launcher script ~/bin/${LAUNCHER_SCRIPT_FILENAME}`);
+    console.log(
+        `  - Delete the '${AGENT_USER}' user (its home directory will already be in the Trash bin)`
+    );
+    console.log(`  - Delete the '${AGENT_GROUP_NAME}' group`);
+    console.log(
+        `  - Remove the launcher script ~/bin/${LAUNCHER_SCRIPT_FILENAME}`
+    );
+    console.log("");
+    console.log(
+        `(If you need to restore the data later, look for it inside your Trash bin, e.g. ${trashDir}.)`
+    );
     console.log("");
 
     const confirmation = await askQuestion(
-        'Are you absolutely sure? Type "DELETE" to confirm: '
+        'Are you sure? Type "TRASH" to confirm: '
     );
-    if (confirmation.trim() !== "DELETE") {
-        console.log("Aborted. Nothing was deleted.");
+    if (confirmation.trim() !== "TRASH") {
+        console.log("Aborted. Nothing was trashed.");
         return;
     }
 
-    const reason = "required to destroy installation";
+    // Move the home directory to the trash bin BEFORE deleting the user, so that
+    // no data is lost. BEWARE: this is done as root (not as the agent user), because
+    // the current user's home (where the trash bin lives) is not accessible to the
+    // agent user, and because after this move `runAsAgentUser` cannot be used anymore
+    // (it cds into the agent user's $HOME, which would no longer exist).
+    if (fs.existsSync(agentUserHome)) {
+        const targetPath = getTrashDestination(trashDir, AGENT_USER);
+        console.log(`Moving ${agentUserHome} to trash bin (${targetPath})...`);
+        await askSudoPasswordAndRun(
+            `mkdir -p "${trashDir}" && mv "${agentUserHome}" "${targetPath}"`,
+            reason
+        );
+        await writeTrashInfoFile(
+            agentUserHome,
+            targetPath,
+            getTrashInfoDir(currentUserHome),
+            (cmd) => askSudoPasswordAndRun(cmd, reason)
+        );
+        // Verify the move actually happened, before deleting the user (which would
+        // else wipe the home directory for good, defeating the purpose of --TRASH).
+        if (fs.existsSync(agentUserHome)) {
+            console.error(
+                `Error: failed to move ${agentUserHome} to the trash bin (${targetPath}).`
+            );
+            console.error(
+                `Aborting, so that no data is lost: the '${AGENT_USER}' user and its home directory have been left untouched.`
+            );
+            process.exit(1);
+        }
+        if (!fs.existsSync(targetPath)) {
+            console.error(
+                `Error: ${agentUserHome} is gone, but it was not found in the trash bin (${targetPath}).`
+            );
+            console.error(
+                `Aborting: the '${AGENT_USER}' user and the '${AGENT_GROUP_NAME}' group have been left untouched, please check what happened to the home directory manually.`
+            );
+            process.exit(1);
+        }
+        console.log(`Home directory sent to trash bin: ${targetPath}`);
+    } else {
+        console.log(
+            `Home directory ${agentUserHome} does not exist, nothing to send to trash bin.`
+        );
+    }
 
-    // Delete the user first (which also removes the home directory on Linux with -r, and on macOS sysadminctl removes the home)
+    // Delete the user (and any leftover of its home directory, which at this point
+    // is at most an empty path, since the real data was already moved to the trash).
     console.log(`Deleting user '${AGENT_USER}'...`);
     if (await userExists(AGENT_USER)) {
         if (CURRENT_OS === UnixBasedOS.MacOS) {
-            // sysadminctl deletes the user and its home directory by default
+            // BEWARE: sysadminctl deletes the home directory by default, which is fine
+            // now (it's already in the trash bin).
             await askSudoPasswordAndRun(
                 `sysadminctl -deleteUser ${AGENT_USER}`,
                 reason
             );
         } else {
-            // -r flag removes the home directory
+            // -r flag removes the home directory, which is fine now (already trashed).
             await askSudoPasswordAndRun(`userdel -r ${AGENT_USER}`, reason);
         }
         console.log(`User '${AGENT_USER}' deleted.`);
@@ -1323,13 +1407,6 @@ async function destroyInstallation(): Promise<void> {
         console.log(
             `User '${AGENT_USER}' does not exist, skipping (already deleted or not created yet).`
         );
-    }
-
-    // Ensure home directory is gone (some macOS configs may leave it)
-    if (fs.existsSync(agentUserHome)) {
-        console.log(`Cleaning residual home directory ${agentUserHome}...`);
-        await askSudoPasswordAndRun(`rm -rf ${agentUserHome}`, reason);
-        console.log("Residual home directory removed.");
     }
 
     // Delete the group
@@ -1362,8 +1439,10 @@ async function destroyInstallation(): Promise<void> {
         console.log("Launcher script removed.");
     }
 
-    console.log("\n=== DESTROY COMPLETE ===");
-    console.log("All related resources have been removed.");
+    console.log("\n=== TRASH COMPLETE ===");
+    console.log(
+        `All related resources have been removed, and '${AGENT_USER}' user's data was moved to your Trash bin (${trashDir}), from where it can still be restored.`
+    );
 }
 
 async function main() {
@@ -1402,8 +1481,8 @@ async function main() {
             `Refrain from caching the sudo password; ask for it every time it is needed.`
         )
         .option(
-            "--BURN, --destroy",
-            `Destroy the '${AGENT_USER}' user, their home directory (${agentUserHome}), and the '${AGENT_GROUP_NAME}' group. Requires interactive user confirmation.`
+            "--TRASH",
+            `Send the '${AGENT_USER}' user's home directory (${agentUserHome}, which includes all of Pi's data: installation, extensions, settings, sessions, etc.) to your own Trash bin (so that it can still be restored later), and delete the '${AGENT_USER}' user and the '${AGENT_GROUP_NAME}' group. Requires interactive user confirmation.`
         );
     program.parse(process.argv);
     const opts = program.opts();
@@ -1487,17 +1566,17 @@ async function main() {
         resolvedGitIdentity = new Some(await resolveGitIdentity(identity));
     }
 
-    if (opts.destroy) {
+    if (opts.TRASH) {
         if (opts.update || opts.extensions || opts.auth || opts.ssh) {
             console.error(
-                "Error: --destroy is only compatible with --verbose and/or --paranoid flags)"
+                "Error: --TRASH is only compatible with --verbose and/or --paranoid flags)"
             );
             console.error(
                 "Please try again with a different flags combination."
             );
             process.exit(1);
         }
-        await destroyInstallation();
+        await trashAgentHome();
         return;
     }
 
